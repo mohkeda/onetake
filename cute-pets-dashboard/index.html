@@ -257,9 +257,10 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         </div>
         <div class="card up" id="up-orders">
           <h3>٢. تقرير طلبات المتاجر</h3>
-          <ul><li>المتجر، المدينة، رسوم التوصيل</li><li>اختياري: رقم الطلب، الحالة (الطلبات الملغاة تُستبعد)</li></ul>
-          <label class="drop" for="file-orders">اسحب الملف هنا أو اضغط للاختيار</label>
-          <input type="file" id="file-orders" accept=".xlsx,.xls,.csv" hidden>
+          <ul><li>تصدير الطلبات من سلة، ملف لكل متجر (يُعرف المتجر من اسم الملف أو من القائمة)</li><li>المدينة، تكلفة الشحن، حالة الطلب، يتطلب شحن</li><li>الملغي والمحذوف والمسترجع يُستبعد</li></ul>
+          <div class="field"><label for="ordersCenter">المتجر</label><select id="ordersCenter"></select></div>
+          <label class="drop" for="file-orders">اسحب الملفات هنا أو اضغط للاختيار</label>
+          <input type="file" id="file-orders" accept=".xlsx,.xls,.csv" multiple hidden>
           <div class="status"></div><div class="map" id="map-orders"></div>
         </div>
         <div class="card up" id="up-sales">
@@ -379,7 +380,7 @@ function matchCenter(text) {
   const t = norm(text);
   if (!t) return null;
   if (t.includes('معرض') || t.includes('exhibit') || t.includes('showroom')) return 'exhibit';
-  if (t.includes('هامتارو') || t.includes('همتارو') || t.includes('hamtaro')) return 'hamtaro';
+  if (t.includes('هامتارو') || t.includes('همتارو') || t.includes('همترو') || t.includes('hamtaro') || t.includes('hamtro')) return 'hamtaro';
   if (t.includes('واجي') || t.includes('wagy') || t.includes('waggy') || t.includes('wagi')) return 'wagy';
   if (t.includes('جمله') || t.includes('wholesale')) return 'wholesale';
   if (t.includes('كيوت') || t.includes('cute')) return 'cpstore';
@@ -422,6 +423,11 @@ let raw = {};           // parsed sheets kept in memory for re-mapping: { is, or
 let selected = new Set(CENTERS.map(c => c.id));
 let R = null;           // last computed result
 
+function ordersFiles() {
+  if (!S.orders) return [];
+  if (!S.orders.files) S.orders = { files: [{ fileName: S.orders.fileName, center: null, rows: S.orders.rows || [] }] };
+  return S.orders.files;
+}
 function blankMonth() { return { is: null, orders: null, sales: [], costs: null, cls: {}, demo: false, k: 1 }; }
 function loadStore() {
   try { const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (s) store = { ...store, ...s, settings: { ...DEFAULT_SETTINGS, ...(s.settings || {}) } }; } catch (e) {}
@@ -454,10 +460,11 @@ function readFile(file) {
 const FIELDS = {
   orders: [
     ['orderNo', 'رقم الطلب', ['رقم الطلب', 'رقم الفاتوره', 'order no', 'order id', 'order']],
-    ['store', 'المتجر *', ['المتجر', 'اسم المتجر', 'القناه', 'نقطه البيع', 'الفرع', 'store', 'channel', 'shop']],
+    ['store', 'المتجر', ['المتجر', 'اسم المتجر', 'نقطه البيع', 'store', 'shop']],
     ['city', 'المدينة *', ['المدينه', 'مدينه', 'المنطقه', 'مدينه الشحن', 'city', 'region']],
-    ['fee', 'رسوم التوصيل', ['رسوم التوصيل', 'قيمه التوصيل', 'رسوم الشحن', 'قيمه الشحن', 'التوصيل', 'الشحن', 'shipping', 'delivery']],
+    ['fee', 'رسوم التوصيل', ['تكلفه الشحن', 'رسوم التوصيل', 'قيمه التوصيل', 'رسوم الشحن', 'قيمه الشحن', 'التوصيل', 'الشحن', 'shipping', 'delivery']],
     ['status', 'الحالة', ['حاله الطلب', 'الحاله', 'status']],
+    ['ship', 'يتطلب شحن', ['يتطلب شحن', 'requires shipping']],
   ],
   sales: [
     ['store', 'المتجر', ['المتجر', 'الفرع', 'نقطه البيع', 'store', 'branch']],
@@ -575,7 +582,10 @@ function parseTable(kind, aoa, mapOverride) {
     if (!r.some(c => String(c).trim())) continue;
     if (kind === 'orders') {
       const status = norm(get(r, 'status'));
-      rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), fee: toNum(get(r, 'fee')), cancelled: /ملغ|الغاء|cancel|مرتجع|refund/.test(status) });
+      const ship = norm(get(r, 'ship'));
+      rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), fee: toNum(get(r, 'fee')),
+        cancelled: /ملغ|الغاء|محذوف|مسترجع|مرتجع|بانتظار الدفع|cancel|deleted|refund/.test(status),
+        pickup: ship === 'لا' || ship === 'no' });
     } else if (kind === 'sales') {
       const name = String(get(r, 'name')).trim();
       if (!name || SUBTOTAL.test(norm(name))) continue;
@@ -595,7 +605,7 @@ function compute() {
   const set = store.settings;
   const c = {};
   for (const ce of CENTERS) c[ce.id] = { salesRev: 0, otherRev: 0, delIn: 0, delOut: 0, delInIS: 0, delOutIS: 0, cogsIS: 0, admin: 0, expenses: 0,
-    fuelOwn: 0, packOwn: 0, fuelAlloc: 0, packAlloc: 0, ordIn: 0, ordOut: 0, lines: [],
+    fuelOwn: 0, packOwn: 0, fuelAlloc: 0, packAlloc: 0, ordIn: 0, ordOut: 0, ordPick: 0, lines: [],
     kept: { rev: 0, admin: 0, op: 0 }, mainRev: 0, mainAdmin: 0, mainOp: 0, mainShare: 0 };
   // Lines of the shared center that are NOT distributed to the stores (e.g. government fees).
   const keepWords = String(set.mainKeep || '').split(/[,،]/).map(norm).filter(Boolean);
@@ -633,16 +643,22 @@ function compute() {
   const riy = set.riyadh.split(/[,،]/).map(norm).filter(Boolean);
   const unknownStores = {};
   let cancelled = 0;
-  for (const o of S.orders?.rows || []) {
+  // One orders file per store (Salla exports carry no store column): the store comes from the
+  // file, unless a store column names one. Pickup orders count for packaging but not for fuel.
+  const orderFiles = ordersFiles();
+  for (const f of orderFiles) for (const o of f.rows) {
     if (o.cancelled) { cancelled++; continue; }
-    const cid = matchCenter(o.store);
+    const byCol = matchCenter(o.store);
+    const cid = byCol && !CMAP[byCol].shared ? byCol : f.center;
     if (!cid) { unknownStores[o.store || '(فارغ)'] = (unknownStores[o.store || '(فارغ)'] || 0) + 1; continue; }
-    const inside = riy.some(k => norm(o.city).includes(k));
-    if (inside) { c[cid].ordIn++; c[cid].delIn += o.fee; } else { c[cid].ordOut++; c[cid].delOut += o.fee; }
+    const x = c[cid];
+    if (o.pickup) { x.ordPick++; continue; }
+    if (riy.some(k => norm(o.city).includes(k))) { x.ordIn++; x.delIn += o.fee; } else { x.ordOut++; x.delOut += o.fee; }
   }
-  const hasOrders = !!(S.orders?.rows?.length);
+  for (const ce of CENTERS) { const x = c[ce.id]; x.ordAll = x.ordIn + x.ordOut + x.ordPick; }
+  const hasOrders = orderFiles.some(f => f.rows.length);
   const totIn = CENTERS.reduce((s, ce) => s + c[ce.id].ordIn, 0);
-  const totAll = CENTERS.reduce((s, ce) => s + c[ce.id].ordIn + c[ce.id].ordOut, 0);
+  const totAll = CENTERS.reduce((s, ce) => s + c[ce.id].ordAll, 0);
   const fuelIS = CENTERS.reduce((s, ce) => s + c[ce.id].fuelOwn, 0);
   const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0);
   const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : fuelIS;
@@ -650,7 +666,7 @@ function compute() {
   for (const ce of CENTERS) {
     const x = c[ce.id];
     if (hasOrders && totIn) x.fuelAlloc = fuelTotal * x.ordIn / totIn; else if (!hasOrders) x.fuelAlloc = x.fuelOwn;
-    if (hasOrders && totAll) x.packAlloc = packTotal * (x.ordIn + x.ordOut) / totAll; else if (!hasOrders) x.packAlloc = x.packOwn;
+    if (hasOrders && totAll) x.packAlloc = packTotal * x.ordAll / totAll; else if (!hasOrders) x.packAlloc = x.packOwn;
     x.svcDiff = 0;
     if (!(hasOrders && set.deliverySource === 'orders')) { x.delIn = x.delInIS; x.delOut = x.delOutIS; }
     else { x.svcDiff = x.delInIS + x.delOutIS - x.delIn - x.delOut; x.otherRev += x.svcDiff; }
@@ -725,7 +741,7 @@ function compute() {
   if (set.mainBasis !== 'off' && (M.revenue || M.totalExp)) {
     const recips = CENTERS.filter(ce => !ce.shared).map(ce => {
       const x = c[ce.id];
-      const b = set.mainBasis === 'orders' ? x.ordIn + x.ordOut : set.mainBasis === 'equal' ? 1 : Math.max(0, x.salesRev);
+      const b = set.mainBasis === 'orders' ? x.ordAll : set.mainBasis === 'equal' ? 1 : Math.max(0, x.salesRev);
       return { x, b };
     }).filter(o => o.b > 0);
     const B = recips.reduce((a, o) => a + o.b, 0);
@@ -962,16 +978,16 @@ function renderResults() {
 
 function renderDelivery() {
   const r = R;
-  const stores = CENTERS.filter(ce => r.c[ce.id].ordIn + r.c[ce.id].ordOut > 0);
+  const stores = CENTERS.filter(ce => r.c[ce.id].ordAll > 0);
   if (!r.hasOrders) { $('#delTable').innerHTML = '<div class="empty">ارفع تقرير طلبات المتاجر من تبويب المدخلات</div>'; return; }
-  let t = `<table><thead><tr><th>المتجر</th><th class="n">طلبات الرياض</th><th class="n">طلبات خارج الرياض</th><th class="n">إيراد توصيل الرياض</th><th class="n">إيراد توصيل خارج الرياض</th><th class="n">نسبة تحمل المحروقات</th><th class="n">المحروقات المحمّلة</th><th class="n">نسبة تحمل التغليف</th><th class="n">التغليف المحمّل</th></tr></thead><tbody>`;
-  const tot = { a: 0, b: 0, c: 0, d: 0, f: 0, p: 0 };
+  let t = `<table><thead><tr><th>المتجر</th><th class="n">طلبات الرياض</th><th class="n">طلبات خارج الرياض</th><th class="n">استلام من الفرع</th><th class="n">إيراد توصيل الرياض</th><th class="n">إيراد توصيل خارج الرياض</th><th class="n">نسبة تحمل المحروقات</th><th class="n">المحروقات المحمّلة</th><th class="n">نسبة تحمل التغليف</th><th class="n">التغليف المحمّل</th></tr></thead><tbody>`;
+  const tot = { a: 0, b: 0, k: 0, c: 0, d: 0, f: 0, p: 0 };
   for (const ce of stores) {
     const x = r.c[ce.id];
-    tot.a += x.ordIn; tot.b += x.ordOut; tot.c += x.delIn; tot.d += x.delOut; tot.f += x.fuelAlloc; tot.p += x.packAlloc;
-    t += `<tr><td><i class="dot" style="background:var(${ce.color});display:inline-block;margin-inline-end:6px"></i>${ce.name}</td><td class="n">${fmt(x.ordIn)}</td><td class="n">${fmt(x.ordOut)}</td><td class="n">${money(x.delIn)}</td><td class="n">${money(x.delOut)}</td><td class="n">${pct(x.ordIn, r.totIn)}</td><td class="n">${money(x.fuelAlloc)}</td><td class="n">${pct(x.ordIn + x.ordOut, r.totAll)}</td><td class="n">${money(x.packAlloc)}</td></tr>`;
+    tot.a += x.ordIn; tot.b += x.ordOut; tot.k += x.ordPick; tot.c += x.delIn; tot.d += x.delOut; tot.f += x.fuelAlloc; tot.p += x.packAlloc;
+    t += `<tr><td><i class="dot" style="background:var(${ce.color});display:inline-block;margin-inline-end:6px"></i>${ce.name}</td><td class="n">${fmt(x.ordIn)}</td><td class="n">${fmt(x.ordOut)}</td><td class="n">${fmt(x.ordPick)}</td><td class="n">${money(x.delIn)}</td><td class="n">${money(x.delOut)}</td><td class="n">${pct(x.ordIn, r.totIn)}</td><td class="n">${money(x.fuelAlloc)}</td><td class="n">${pct(x.ordAll, r.totAll)}</td><td class="n">${money(x.packAlloc)}</td></tr>`;
   }
-  t += `<tr class="sum"><td>الإجمالي</td><td class="n">${fmt(tot.a)}</td><td class="n">${fmt(tot.b)}</td><td class="n">${money(tot.c)}</td><td class="n">${money(tot.d)}</td><td class="n">100%</td><td class="n">${money(tot.f)}</td><td class="n">100%</td><td class="n">${money(tot.p)}</td></tr></tbody></table>`;
+  t += `<tr class="sum"><td>الإجمالي</td><td class="n">${fmt(tot.a)}</td><td class="n">${fmt(tot.b)}</td><td class="n">${fmt(tot.k)}</td><td class="n">${money(tot.c)}</td><td class="n">${money(tot.d)}</td><td class="n">100%</td><td class="n">${money(tot.f)}</td><td class="n">100%</td><td class="n">${money(tot.p)}</td></tr></tbody></table>`;
   const unk = Object.entries(r.unknownStores);
   if (unk.length) t += `<p class="note">طلبات لم يُتعرف على متجرها (لم تُحتسب): ${unk.map(([k, v]) => `${esc(k)} (<span class="num">${v}</span>)`).join('، ')}</p>`;
   t += `<p class="note">تكلفة المحروقات للطلب <b class="num">${fmt(r.fuelPerOrder, 2)}</b> · تكلفة التغليف للطلب <b class="num">${fmt(r.packPerOrder, 2)}</b>${r.cancelled ? ` · استُبعد <span class="num">${fmt(r.cancelled)}</span> طلب ملغي` : ''}</p>`;
@@ -1009,9 +1025,9 @@ function renderStatement() {
 
   // delivery and allocated costs
   const dl = [];
-  if (x.ordIn + x.ordOut) dl.push(['طلبات داخل الرياض', fmt(x.ordIn), ''], ['طلبات خارج الرياض', fmt(x.ordOut), ''],
+  if (x.ordAll) dl.push(['طلبات داخل الرياض', fmt(x.ordIn), ''], ['طلبات خارج الرياض', fmt(x.ordOut), ''], ...(x.ordPick ? [['استلام من الفرع', fmt(x.ordPick), '']] : []),
     ['إيراد التوصيل داخل الرياض', money(x.delIn), ''], ['خدمات الشحن الخارجي', money(x.delOut), ''],
-    ['نسبة تحمل المحروقات', pct(x.ordIn, R.totIn), money(x.fuelAlloc)], ['نسبة تحمل التغليف', pct(x.ordIn + x.ordOut, R.totAll), money(x.packAlloc)]);
+    ['نسبة تحمل المحروقات', pct(x.ordIn, R.totIn), money(x.fuelAlloc)], ['نسبة تحمل التغليف', pct(x.ordAll, R.totAll), money(x.packAlloc)]);
   if (x.mainShare) dl.push(['حصة مصاريف الرئيسي', `${fmt(x.mainShare * 100, 1)}%`, money(x.mainAdmin + x.mainOp - x.mainRev)]);
   $('#cDelCard').hidden = !dl.length;
   $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
@@ -1049,7 +1065,7 @@ function renderStatement() {
   t += row('إيراد التوصيل داخل الرياض', x.delIn, 'indent', 'rev');
   for (const [a, v] of lines('other')) t += row(a, v, 'indent', 'rev');
   if (x.mainRev) t += row(`حصة الرئيسي من الإيرادات (${fmt(x.mainShare * 100, 1)}%)`, x.mainRev, 'indent', 'rev');
-  if (Math.abs(x.svcDiff) >= 0.5) t += row(x.ordIn + x.ordOut ? 'ايراد الخدمات: الفرق عن تقرير الطلبات' : 'ايراد الخدمات', x.svcDiff, 'indent', 'rev');
+  if (Math.abs(x.svcDiff) >= 0.5) t += row(x.ordAll ? 'ايراد الخدمات: الفرق عن تقرير الطلبات' : 'ايراد الخدمات', x.svcDiff, 'indent', 'rev');
   t += row('إجمالي الإيرادات', rev, 'sub', 'rev');
   t += `<tr class="sec"><td colspan="4">ثانياً: المصروفات</td></tr>`;
   t += row('المصاريف الإدارية', x.adminT, 'sub');
@@ -1121,7 +1137,9 @@ function renderWholesale() {
 function renderInputs() {
   const st = (id, html) => { $(`#${id} .status`).innerHTML = html; };
   st('up-is', S.is ? `<span class="badge ok">✓ ${esc(S.is.fileName)}</span> <span class="num">${fmt(S.is.rows.length)}</span> قيد` : '<span class="badge">لم يُرفع</span>');
-  st('up-orders', S.orders ? `<span class="badge ok">✓ ${esc(S.orders.fileName)}</span> <span class="num">${fmt(S.orders.rows.length)}</span> طلب` : '<span class="badge">لم يُرفع</span>');
+  const OF = ordersFiles();
+  st('up-orders', OF.length ? OF.map((f, i) => `<div class="file-row"><span class="badge ok">✓ ${esc(f.fileName)}</span> ${CMAP[f.center]?.name || 'حسب عمود المتجر'} · <span class="num">${fmt(f.rows.length)}</span> طلب <button class="btn small" data-rmo="${i}">حذف</button></div>`).join('') : '<span class="badge">لم يُرفع</span>');
+  $('#up-orders .status').querySelectorAll('[data-rmo]').forEach(b => b.onclick = () => { S.orders.files.splice(+b.dataset.rmo, 1); if (!S.orders.files.length) S.orders = null; refresh(); });
   const CT = S.demo ? S.costs : store.costs;
   st('up-costs', CT ? `<span class="badge ok">✓ ${esc(CT.fileName)}</span> <span class="num">${fmt(CT.rows.length)}</span> صنف${S.demo ? '' : ' · محفوظة لكل الأشهر'}` : '<span class="badge">لم يُرفع</span>');
   st('up-sales', S.sales.length ? S.sales.map((f, i) => `<div class="file-row"><span class="badge ok">✓ ${esc(f.fileName)}</span> ${CMAP[f.center]?.name || 'حسب عمود المتجر'} · <span class="num">${fmt(f.rows.length)}</span> صف <button class="btn small" data-rm="${i}">حذف</button></div>`).join('') : '<span class="badge">لم يُرفع</span>');
@@ -1189,9 +1207,15 @@ setupDrop('up-orders', 'file-orders', async file => {
   const aoa = await safeRead(file, 'up-orders'); if (!aoa) return;
   leaveDemo();
   const p = parseTable('orders', aoa);
-  S.orders = { fileName: file.name, rows: p.rows };
+  const center = matchCenter(file.name.replace(/\.[^.]+$/, '')) || $('#ordersCenter').value;
+  const entry = { fileName: file.name, center, rows: p.rows };
+  ordersFiles();
+  S.orders = S.orders || { files: [] };
+  // re-uploading a store's file replaces it
+  S.orders.files = S.orders.files.filter(f => f.center !== center || !center);
+  S.orders.files.push(entry);
   refresh();
-  mappingUI($('#up-orders .map'), (aoa[p.map.header] || []).map(String), FIELDS.orders, p.map, m => { S.orders.rows = parseTable('orders', aoa, m).rows; refresh(); });
+  mappingUI($('#up-orders .map'), (aoa[p.map.header] || []).map(String), FIELDS.orders, p.map, m => { entry.rows = parseTable('orders', aoa, m).rows; refresh(); });
 });
 setupDrop('up-costs', 'file-costs', async file => {
   const aoa = await safeRead(file, 'up-costs'); if (!aoa) return;
@@ -1212,6 +1236,7 @@ setupDrop('up-sales', 'file-sales', async file => {
   mappingUI($('#up-sales .map'), (aoa[p.map.header] || []).map(String), FIELDS.sales, p.map, m => { entry.rows = parseTable('sales', aoa, m).rows; refresh(); });
 });
 $('#salesCenter').innerHTML = CENTERS.map(ce => `<option value="${ce.id}">${ce.name}</option>`).join('');
+$('#ordersCenter').innerHTML = CENTERS.filter(ce => !ce.shared).map(ce => `<option value="${ce.id}">${ce.name}</option>`).join('');
 
 /* ---------- demo data ---------- */
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
@@ -1306,7 +1331,7 @@ function demoMonth(monthKey, k = 1) {
 function applyDemo(d, k) {
   const S2 = blankMonth(); S2.demo = true; S2.k = k;
   S2.is = { fileName: 'قائمة الدخل (تجريبي).xlsx', rows: parseIS(d.isAoa).rows };
-  S2.orders = { fileName: 'طلبات المتاجر (تجريبي).xlsx', rows: parseTable('orders', d.ordersAoa).rows };
+  S2.orders = { files: [{ fileName: 'طلبات المتاجر (تجريبي).xlsx', center: null, rows: parseTable('orders', d.ordersAoa).rows }] };
   S2.costs = { fileName: 'أسعار الجملة (تجريبي).xlsx', rows: parseTable('costs', d.costsAoa).rows };
   S2.sales = d.salesFiles.map(f => ({ fileName: f.name, center: f.center, rows: parseTable('sales', f.aoa).rows }));
   return S2;
