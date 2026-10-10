@@ -1,0 +1,1173 @@
+<title>لوحة نتائج الحيوانات اللطيفة</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: one operator console, RTL. Sticky header with the month control, tabs below,
+   summary tiles first then charts then the full P&L table. */
+:root {
+  --bg: #f6f7f5;
+  --surface: #fcfcfb;
+  --surface-2: #eef1ee;
+  --ink: #14201c;
+  --ink-2: #4a5550;
+  --muted: #7d8783;
+  --line: #dfe3df;
+  --axis: #c1c8c3;
+  --accent: #0f6b5c;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcefe9;
+  --good-ink: #006300;
+  --bad-ink: #b42828;
+  --warn-bg: #fff3d6;
+  --warn-ink: #7a5300;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --cost: #b9c0bb;
+  --font-display: "Readex Pro", "IBM Plex Sans Arabic", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1312; --surface: #171c1a; --surface-2: #1f2623; --ink: #eef2ef; --ink-2: #bfc8c3;
+    --muted: #8a948f; --line: #2a3330; --axis: #3a4440; --accent: #3fb59d; --accent-ink: #06201a;
+    --accent-soft: #163a32; --good-ink: #2fbf4f; --bad-ink: #f07171; --warn-bg: #3a2e10; --warn-ink: #f5c75a;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --cost: #4a524e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1312; --surface: #171c1a; --surface-2: #1f2623; --ink: #eef2ef; --ink-2: #bfc8c3;
+  --muted: #8a948f; --line: #2a3330; --axis: #3a4440; --accent: #3fb59d; --accent-ink: #06201a;
+  --accent-soft: #163a32; --good-ink: #2fbf4f; --bad-ink: #f07171; --warn-bg: #3a2e10; --warn-ink: #f5c75a;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --cost: #4a524e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.6; }
+.app { direction: rtl; max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 0 48px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: 1.35rem; font-weight: 700; }
+h2 { font-size: 1.05rem; font-weight: 600; }
+h3 { font-size: .95rem; font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 14px 0; border-bottom: 1px solid var(--line); }
+.top-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand .paw { width: 38px; height: 38px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; flex: none; }
+.brand small { display: block; color: var(--muted); font-size: .8rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.field { display: flex; align-items: center; gap: 6px; }
+.field label { color: var(--ink-2); font-size: .82rem; }
+input[type="month"], select, input[type="number"], input[type="text"] {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-height: 36px;
+}
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px; min-height: 36px; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn.small { min-height: 28px; padding: 2px 10px; font-size: .82rem; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; margin-top: 12px; }
+.tab { border: 0; background: none; padding: 10px 14px; border-bottom: 3px solid transparent; color: var(--ink-2); white-space: nowrap; font-weight: 500; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 99px; font-size: .75rem; font-weight: 600; background: var(--warn-bg); color: var(--warn-ink); }
+.badge.ok { background: var(--accent-soft); color: var(--accent); }
+
+main section.panel { display: grid; gap: 18px; padding-top: 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.card-head p { margin: 0; color: var(--muted); font-size: .82rem; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 18px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; }
+.kpi .lbl { color: var(--ink-2); font-size: .82rem; }
+.kpi .val { font-family: var(--font-display); font-size: 1.6rem; font-weight: 600; line-height: 1.3; }
+.kpi .sub { color: var(--muted); font-size: .78rem; }
+.pos { color: var(--good-ink); } .neg { color: var(--bad-ink); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 3px 12px 3px 10px; font-size: .85rem; }
+.chip[aria-pressed="false"] { opacity: .5; }
+.dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+th, td { padding: 7px 10px; text-align: start; border-bottom: 1px solid var(--line); white-space: nowrap; }
+thead th { color: var(--ink-2); font-weight: 600; font-size: .8rem; background: var(--surface-2); position: sticky; top: 0; }
+td.n, th.n { text-align: left; font-variant-numeric: tabular-nums; }
+tr.sum td { font-weight: 700; background: var(--surface-2); }
+tr.sub td { font-weight: 600; }
+tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
+
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+.chart .lbl-strong { fill: var(--ink); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: .82rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+#tip { position: fixed; z-index: 20; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 10px; font-size: .8rem; box-shadow: 0 6px 20px rgba(0,0,0,.12); direction: rtl; min-width: 150px; }
+#tip .row { display: flex; justify-content: space-between; gap: 14px; }
+.empty { color: var(--muted); padding: 24px 8px; text-align: center; }
+
+.uploads { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 14px; }
+.up { display: grid; gap: 10px; align-content: start; }
+.up .drop { border: 1.5px dashed var(--axis); border-radius: 8px; padding: 14px; text-align: center; color: var(--ink-2); cursor: pointer; }
+.up .drop:hover, .up .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.up ul { margin: 0; padding-inline-start: 18px; color: var(--ink-2); font-size: .82rem; }
+.up .status { font-size: .82rem; }
+.mapping { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; font-size: .82rem; }
+.mapping select { min-height: 30px; padding: 2px 6px; }
+.note { font-size: .82rem; color: var(--ink-2); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+.note b { color: var(--ink); }
+.settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px 18px; }
+.settings .field { flex-direction: column; align-items: stretch; gap: 4px; }
+.toast { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); inset-inline-start: 16px; background: var(--ink); color: var(--bg);
+  padding: 8px 14px; border-radius: 8px; z-index: 30; font-size: .85rem; }
+.stack { display: grid; gap: 10px; align-content: start; }
+.grid-2 { align-items: start; }
+.file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-block: 3px; }
+@media (prefers-reduced-motion: no-preference) { .tab, .btn, .chip { transition: background .15s, color .15s, opacity .15s; } }
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="top-row">
+      <div class="brand">
+        <div class="paw" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="var(--accent-ink)"><ellipse cx="6" cy="9" rx="2.2" ry="2.8"/><ellipse cx="10" cy="5.5" rx="2.2" ry="2.8"/><ellipse cx="14" cy="5.5" rx="2.2" ry="2.8"/><ellipse cx="18" cy="9" rx="2.2" ry="2.8"/><path d="M12 11c-3.5 0-6.5 3.6-6.5 6.4 0 2 1.6 2.6 3.2 2.6 1.4 0 2.2-.7 3.3-.7s1.9.7 3.3.7c1.6 0 3.2-.6 3.2-2.6C18.5 14.6 15.5 11 12 11z"/></svg>
+        </div>
+        <div>
+          <h1>شركة الحيوانات اللطيفة</h1>
+          <small>النتائج الشهرية لمراكز البيع <span id="demoBadge" class="badge" hidden>بيانات تجريبية</span></small>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="field"><label for="month">الشهر</label><input type="month" id="month"></div>
+        <button class="btn primary" id="saveMonth">حفظ نتائج الشهر</button>
+        <button class="btn" id="loadDemo">تحميل بيانات تجريبية</button>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="results" aria-selected="true">النتائج</button>
+      <button class="tab" role="tab" data-tab="delivery" aria-selected="false">التوصيل وتحميل المصاريف</button>
+      <button class="tab" role="tab" data-tab="wholesale" aria-selected="false">الجملة</button>
+      <button class="tab" role="tab" data-tab="inputs" aria-selected="false">المدخلات والإعدادات</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- RESULTS -->
+    <section class="panel" id="tab-results">
+      <div class="chips" id="centerChips" aria-label="تصفية مراكز البيع"></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>صافي الربح حسب مركز البيع</h2><p>بعد تحميل المحروقات والتغليف</p></div>
+          <div id="chartNet"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>صافي الربح الشهري</h2><p>من الأشهر المحفوظة</p></div>
+          <div id="chartTrend"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>قائمة الدخل حسب مراكز البيع</h2><p id="plNote"></p></div>
+        <div class="table-wrap" id="plTable"></div>
+      </div>
+    </section>
+
+    <!-- DELIVERY -->
+    <section class="panel" id="tab-delivery" hidden>
+      <div class="kpis" id="delKpis"></div>
+      <div class="card">
+        <div class="card-head"><h2>إيراد التوصيل ونسب التحمل لكل متجر</h2><p>المحروقات تُحمَّل بعدد طلبات داخل الرياض، والتغليف بعدد كل الطلبات</p></div>
+        <div class="table-wrap" id="delTable"></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>إيراد التوصيل حسب المتجر</h2><p>داخل الرياض وخارجها</p></div>
+          <div id="chartDelivery"></div>
+        </div>
+        <div class="card stack">
+          <h2>مبالغ المصاريف الموزعة</h2>
+          <p class="note">تُؤخذ تلقائيًا من حسابات المحروقات والتغليف في قائمة الدخل (مجموع كل المراكز)، ويمكن إدخال مبلغ يدوي بدلًا منها.</p>
+          <div class="settings">
+            <div class="field"><label for="fuelManual">مصروف المحروقات (يدوي)</label><input type="number" id="fuelManual" placeholder="تلقائي من قائمة الدخل" min="0" step="0.01"></div>
+            <div class="field"><label for="packManual">مصروف التغليف (يدوي)</label><input type="number" id="packManual" placeholder="تلقائي من قائمة الدخل" min="0" step="0.01"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHOLESALE -->
+    <section class="panel" id="tab-wholesale" hidden>
+      <div class="kpis" id="wsKpis"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>براندات الجملة: المبيعات والتكلفة</h2><p>طول العمود = المبيعات، مقسومة إلى تكلفة ومجمل ربح</p></div>
+          <div id="chartBrands"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>أرباح الجملة مع المصروف</h2><p id="wsNote"></p></div>
+          <div class="table-wrap" id="wsPL"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>تكلفة بضاعة الجملة حسب المتجر والبراند</h2><p>الكمية × تكلفة الوحدة من جدول تكلفة الجملة</p></div>
+        <div class="table-wrap" id="wsMatrix"></div>
+      </div>
+      <div class="card" id="wsUnmatchedCard" hidden>
+        <div class="card-head"><h2>أصناف بدون تكلفة</h2><p>أصناف براندات الجملة غير موجودة في جدول التكلفة، تكلفتها محسوبة صفر</p></div>
+        <div class="table-wrap" id="wsUnmatched"></div>
+      </div>
+    </section>
+
+    <!-- INPUTS -->
+    <section class="panel" id="tab-inputs" hidden>
+      <div class="note">ارفع ملفات Excel أو CSV المصدَّرة من برنامج <b>إدارة</b>. تُكتشف الأعمدة تلقائيًا، ويمكنك تصحيح الربط من القوائم تحت كل ملف. البيانات تبقى في متصفحك فقط.</div>
+      <div class="uploads">
+        <div class="card up" id="up-is">
+          <h3>١. قائمة الدخل بمراكز التكلفة</h3>
+          <ul><li>عمود اسم الحساب + عمود لكل مركز (معرض كيوت بيتس، متجر كيوت بيتس، هامتارو، واجي، الجملة)</li><li>أو: الحساب، مركز التكلفة، المبلغ (أو مدين/دائن)</li></ul>
+          <label class="drop" for="file-is">اسحب الملف هنا أو اضغط للاختيار</label>
+          <input type="file" id="file-is" accept=".xlsx,.xls,.csv" hidden>
+          <div class="status"></div><div class="map" id="map-is"></div>
+        </div>
+        <div class="card up" id="up-orders">
+          <h3>٢. تقرير طلبات المتاجر</h3>
+          <ul><li>المتجر، المدينة، رسوم التوصيل</li><li>اختياري: رقم الطلب، الحالة (الطلبات الملغاة تُستبعد)</li></ul>
+          <label class="drop" for="file-orders">اسحب الملف هنا أو اضغط للاختيار</label>
+          <input type="file" id="file-orders" accept=".xlsx,.xls,.csv" hidden>
+          <div class="status"></div><div class="map" id="map-orders"></div>
+        </div>
+        <div class="card up" id="up-sales">
+          <h3>٣. تقارير المبيعات لكل متجر</h3>
+          <ul><li>ملف لكل متجر: كود الصنف، اسم الصنف، البراند، الكمية، صافي المبيعات</li><li>يمكن رفع أكثر من ملف</li></ul>
+          <div class="field"><label for="salesCenter">المتجر</label><select id="salesCenter"></select></div>
+          <label class="drop" for="file-sales">اسحب الملف هنا أو اضغط للاختيار</label>
+          <input type="file" id="file-sales" accept=".xlsx,.xls,.csv" multiple hidden>
+          <div class="status"></div><div class="map" id="map-sales"></div>
+        </div>
+        <div class="card up" id="up-costs">
+          <h3>٤. جدول تكلفة بضاعة الجملة</h3>
+          <ul><li>كود الصنف، اسم الصنف، البراند، تكلفة الوحدة</li><li>البراندات: كانيفا، رون رون، شيرمان، كاندي</li></ul>
+          <label class="drop" for="file-costs">اسحب الملف هنا أو اضغط للاختيار</label>
+          <input type="file" id="file-costs" accept=".xlsx,.xls,.csv" hidden>
+          <div class="status"></div><div class="map" id="map-costs"></div>
+        </div>
+      </div>
+
+      <div class="card stack">
+        <h2>الإعدادات</h2>
+        <div class="settings">
+          <div class="field"><label for="setRiyadh">كلمات تحديد طلبات الرياض</label><input type="text" id="setRiyadh"></div>
+          <div class="field"><label for="setDelivery">مصدر إيراد التوصيل</label>
+            <select id="setDelivery"><option value="orders">تقرير الطلبات</option><option value="is">حساب التوصيل في قائمة الدخل</option></select></div>
+          <div class="field"><label for="setWs">مصدر إيراد الجملة</label>
+            <select id="setWs"><option value="sales">مبيعات البراندات من تقارير المبيعات</option><option value="is">إيراد مركز الجملة في قائمة الدخل</option></select></div>
+          <div class="field"><label for="setWsCost">تكلفة بضاعة الجملة</label>
+            <select id="setWsCost"><option value="calc">محسوبة من جدول التكلفة</option><option value="is">من قائمة الدخل</option></select></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>تصنيف حسابات قائمة الدخل</h2><p>صُنِّفت تلقائيًا حسب اسم الحساب، غيّر التصنيف إن لزم</p></div>
+        <div class="table-wrap" id="clsTable"></div>
+      </div>
+
+      <div class="card stack">
+        <div class="card-head"><h2>الأشهر المحفوظة</h2><p>تُحفظ في هذا المتصفح، استخدم النسخ الاحتياطي لنقلها</p></div>
+        <div class="table-wrap" id="historyTable"></div>
+        <div class="controls">
+          <button class="btn" id="exportBackup">نسخ احتياطي (JSON)</button>
+          <label class="btn" for="importBackup">استيراد نسخة احتياطية</label>
+          <input type="file" id="importBackup" accept=".json" hidden>
+          <button class="btn" id="clearMonth">مسح مدخلات الشهر الحالي</button>
+        </div>
+        <textarea id="backupText" rows="4" hidden readonly style="width:100%;font-family:monospace;font-size:.75rem;direction:ltr"></textarea>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="tip" hidden></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- constants ---------- */
+const CENTERS = [
+  { id: 'exhibit',   name: 'معرض كيوت بيتس', short: 'المعرض',     color: '--s1' },
+  { id: 'cpstore',   name: 'متجر كيوت بيتس', short: 'كيوت بيتس',  color: '--s2' },
+  { id: 'hamtaro',   name: 'متجر هامتارو',   short: 'هامتارو',    color: '--s3' },
+  { id: 'wagy',      name: 'متجر واجي',      short: 'واجي',       color: '--s4' },
+  { id: 'wholesale', name: 'الجملة',         short: 'الجملة',     color: '--s5' },
+];
+const CMAP = Object.fromEntries(CENTERS.map(c => [c.id, c]));
+const BRANDS = [
+  { id: 'kaniva',  name: 'كانيفا',  keys: ['كانيفا', 'كنيفا', 'kaniva', 'kanniva', 'caniva'] },
+  { id: 'ronron',  name: 'رون رون', keys: ['رون رون', 'رونرون', 'ronron', 'ron ron'] },
+  { id: 'sherman', name: 'شيرمان',  keys: ['شيرمان', 'sherman'] },
+  { id: 'candy',   name: 'كاندي',   keys: ['كاندي', 'candy', 'kandy'] },
+];
+const CATS = {
+  sales:    'إيراد مبيعات',
+  contra:   'مردودات وخصومات مبيعات',
+  delivery: 'إيراد توصيل',
+  cogs:     'تكلفة البضاعة المباعة',
+  expense:  'مصروف تشغيلي',
+  fuel:     'محروقات (تُوزَّع)',
+  pack:     'تغليف (يُوزَّع)',
+  ignore:   'تجاهل',
+};
+const LS_KEY = 'cutepets-dashboard-v1';
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const norm = s => String(s ?? '').toLowerCase()
+  .replace(/[ً-ْـ]/g, '')
+  .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+const toNum = v => {
+  if (typeof v === 'number') return v;
+  if (v == null) return 0;
+  let s = String(v).trim().replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[٫]/g, '.').replace(/[,،\s]/g, '');
+  let neg = /^\(.*\)$/.test(s) || /-$/.test(s);
+  s = s.replace(/[()]/g, '').replace(/-$/, '');
+  const n = parseFloat(s.replace(/[^\d.\-]/g, ''));
+  return isNaN(n) ? 0 : (neg ? -Math.abs(n) : n);
+};
+const fmt = (n, d = 0) => (Math.round(n * 10 ** d) / 10 ** d).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const money = n => `${n < 0 ? '−' : ''}${fmt(Math.abs(n))}`;
+const pct = (a, b) => b ? `${fmt(a / b * 100, 1)}%` : '—';
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const curMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const monthLabel = m => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { month: 'short', year: 'numeric' }); };
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+
+function matchCenter(text) {
+  const t = norm(text);
+  if (!t) return null;
+  if (t.includes('معرض') || t.includes('exhibit') || t.includes('showroom')) return 'exhibit';
+  if (t.includes('هامتارو') || t.includes('همتارو') || t.includes('hamtaro')) return 'hamtaro';
+  if (t.includes('واجي') || t.includes('wagy') || t.includes('waggy') || t.includes('wagi')) return 'wagy';
+  if (t.includes('جمله') || t.includes('wholesale')) return 'wholesale';
+  if (t.includes('كيوت') || t.includes('cute')) return 'cpstore';
+  return null;
+}
+function matchBrand(text) {
+  const t = norm(text);
+  if (!t) return null;
+  for (const b of BRANDS) if (b.keys.some(k => t.includes(norm(k)))) return b.id;
+  return null;
+}
+function classify(account) {
+  const t = norm(account);
+  const has = (...ws) => ws.some(w => t.includes(norm(w)));
+  if (has('محروقات', 'وقود', 'بنزين', 'ديزل', 'fuel')) return 'fuel';
+  if (has('تغليف', 'تعبئه', 'اكياس', 'كراتين', 'packaging')) return 'pack';
+  if (has('تكلفه') && has('بضاعه', 'مبيعات', 'مباعه')) return 'cogs';
+  if (has('مردود', 'خصم مسموح', 'خصومات مبيعات')) return 'contra';
+  if (has('ايراد', 'ايرادات', 'revenue') && has('توصيل', 'شحن', 'delivery')) return 'delivery';
+  if (has('مبيعات', 'ايراد', 'ايرادات', 'sales', 'revenue')) return 'sales';
+  return 'expense';
+}
+const SUBTOTAL = /(^|\s)(اجمالي|مجموع|صافي الربح|صافي الدخل|مجمل الربح|صافي الخساره|total|net income|gross profit)(\s|$)/;
+
+/* ---------- state ---------- */
+const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsRevenue: 'sales', wsCost: 'calc', fuelManual: '', packManual: '' };
+let store = { months: {}, history: {}, settings: { ...DEFAULT_SETTINGS }, lastMonth: null };
+let S = blankMonth();
+let raw = {};           // parsed sheets kept in memory for re-mapping: { is, orders, costs, sales:[...] }
+let selected = new Set(CENTERS.map(c => c.id));
+let R = null;           // last computed result
+
+function blankMonth() { return { is: null, orders: null, sales: [], costs: null, cls: {}, demo: false, k: 1 }; }
+function loadStore() {
+  try { const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (s) store = { ...store, ...s, settings: { ...DEFAULT_SETTINGS, ...(s.settings || {}) } }; } catch (e) {}
+}
+function persist() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch (e) { /* storage full or blocked: dashboard still works in-session */ }
+}
+
+/* ---------- file reading ---------- */
+function readFile(file) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onerror = () => rej(fr.error);
+    const isText = /\.(csv|txt|tsv)$/i.test(file.name);
+    fr.onload = () => {
+      try {
+        // CSV exports are UTF-8 text; reading them as bytes would garble Arabic headers.
+        const wb = isText ? XLSX.read(String(fr.result).replace(/^\uFEFF/, ''), { type: 'string', raw: false })
+                          : XLSX.read(fr.result, { type: 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
+        res(aoa);
+      } catch (e) { rej(e); }
+    };
+    if (isText) fr.readAsText(file, 'utf-8'); else fr.readAsArrayBuffer(file);
+  });
+}
+
+const FIELDS = {
+  orders: [
+    ['orderNo', 'رقم الطلب', ['رقم الطلب', 'رقم الفاتوره', 'order no', 'order id', 'order']],
+    ['store', 'المتجر *', ['المتجر', 'اسم المتجر', 'القناه', 'نقطه البيع', 'الفرع', 'store', 'channel', 'shop']],
+    ['city', 'المدينة *', ['المدينه', 'مدينه', 'المنطقه', 'مدينه الشحن', 'city', 'region']],
+    ['fee', 'رسوم التوصيل', ['رسوم التوصيل', 'قيمه التوصيل', 'رسوم الشحن', 'قيمه الشحن', 'التوصيل', 'الشحن', 'shipping', 'delivery']],
+    ['status', 'الحالة', ['حاله الطلب', 'الحاله', 'status']],
+  ],
+  sales: [
+    ['store', 'المتجر', ['المتجر', 'الفرع', 'نقطه البيع', 'store', 'branch']],
+    ['code', 'كود الصنف', ['كود الصنف', 'رقم الصنف', 'رمز الصنف', 'الكود', 'كود', 'باركود', 'sku', 'code']],
+    ['name', 'اسم الصنف *', ['اسم الصنف', 'الصنف', 'المنتج', 'الوصف', 'item', 'product', 'name']],
+    ['brand', 'البراند', ['البراند', 'الماركه', 'العلامه التجاريه', 'العلامه', 'brand']],
+    ['qty', 'الكمية *', ['الكميه المباعه', 'الكميه', 'كميه', 'العدد', 'qty', 'quantity']],
+    ['sales', 'صافي المبيعات *', ['صافي المبيعات', 'قيمه المبيعات', 'اجمالي المبيعات', 'المبيعات', 'الصافي', 'الاجمالي', 'القيمه', 'net', 'total', 'amount']],
+  ],
+  costs: [
+    ['code', 'كود الصنف', ['كود الصنف', 'رقم الصنف', 'رمز الصنف', 'الكود', 'كود', 'باركود', 'sku', 'code']],
+    ['name', 'اسم الصنف', ['اسم الصنف', 'الصنف', 'المنتج', 'الوصف', 'item', 'product', 'name']],
+    ['brand', 'البراند', ['البراند', 'الماركه', 'العلامه', 'brand']],
+    ['cost', 'تكلفة الوحدة *', ['تكلفه الوحده', 'سعر التكلفه', 'التكلفه', 'تكلفه', 'unit cost', 'cost']],
+  ],
+  isLong: [
+    ['account', 'الحساب *', ['اسم الحساب', 'الحساب', 'البند', 'البيان', 'account']],
+    ['center', 'مركز التكلفة *', ['مركز التكلفه', 'مركز تكلفه', 'مركز', 'cost center', 'center']],
+    ['amount', 'المبلغ', ['المبلغ', 'الرصيد', 'القيمه', 'الصافي', 'amount', 'balance']],
+    ['debit', 'مدين', ['مدين', 'debit']],
+    ['credit', 'دائن', ['دائن', 'credit']],
+  ],
+};
+
+function findHeaderRow(aoa, test) {
+  let best = 0, bestScore = -1;
+  for (let i = 0; i < Math.min(aoa.length, 25); i++) {
+    const sc = test(aoa[i] || []);
+    if (sc > bestScore) { bestScore = sc; best = i; }
+  }
+  return best;
+}
+function autoMap(headers, fields) {
+  const H = headers.map(norm);
+  const used = new Set(), map = {};
+  for (const [key, , syns] of fields) {
+    let idx = -1;
+    for (const s of syns.map(norm)) { idx = H.findIndex((h, i) => !used.has(i) && h === s); if (idx >= 0) break; }
+    if (idx < 0) for (const s of syns.map(norm)) { idx = H.findIndex((h, i) => !used.has(i) && h && h.includes(s)); if (idx >= 0) break; }
+    map[key] = idx; if (idx >= 0) used.add(idx);
+  }
+  return map;
+}
+function scoreFor(fields) {
+  const all = fields.flatMap(f => f[2]).map(norm);
+  return row => row.filter(c => { const t = norm(c); return t && all.some(s => t === s || t.includes(s)); }).length;
+}
+
+/* ---------- parsers ---------- */
+function parseIS(aoa, mapOverride) {
+  // Wide format: a header row that names two or more centers.
+  const wideScore = row => row.filter(c => matchCenter(c)).length;
+  const hWide = findHeaderRow(aoa, wideScore);
+  const wideCount = wideScore(aoa[hWide] || []);
+  const longFields = FIELDS.isLong;
+  const hLong = findHeaderRow(aoa, scoreFor(longFields));
+  const longMap = autoMap(aoa[hLong] || [], longFields);
+  const mode = mapOverride?.mode || (wideCount >= 2 ? 'wide' : (longMap.center >= 0 ? 'long' : 'wide'));
+  const rows = [];
+  let map;
+  if (mode === 'wide') {
+    const head = aoa[hWide] || [];
+    map = mapOverride?.mode === 'wide' ? mapOverride : {
+      mode, header: hWide,
+      account: head.findIndex((c, i) => !matchCenter(c) && aoa.slice(hWide + 1, hWide + 30).filter(r => r[i] && isNaN(toNum(r[i]) || NaN) ).length > 2),
+      cols: head.map(c => matchCenter(c) || ''),
+    };
+    if (map.account < 0) map.account = 0;
+    for (const r of aoa.slice(map.header + 1)) {
+      const acc = String(r[map.account] ?? '').trim();
+      if (!acc || SUBTOTAL.test(norm(acc))) continue;
+      map.cols.forEach((cid, i) => { if (cid && i !== map.account) { const v = toNum(r[i]); if (v) rows.push({ account: acc, center: cid, amount: v }); } });
+    }
+  } else {
+    map = mapOverride?.mode === 'long' ? mapOverride : { mode, header: hLong, ...longMap };
+    for (const r of aoa.slice(map.header + 1)) {
+      const acc = String(r[map.account] ?? '').trim();
+      if (!acc || SUBTOTAL.test(norm(acc))) continue;
+      const cid = matchCenter(r[map.center]);
+      if (!cid) continue;
+      let v = map.amount >= 0 ? toNum(r[map.amount]) : toNum(r[map.debit]) - toNum(r[map.credit]);
+      if (v) rows.push({ account: acc, center: cid, amount: v });
+    }
+  }
+  return { rows, map };
+}
+function parseTable(kind, aoa, mapOverride) {
+  const fields = FIELDS[kind];
+  const h = mapOverride ? mapOverride.header : findHeaderRow(aoa, scoreFor(fields));
+  const map = mapOverride || { header: h, ...autoMap(aoa[h] || [], fields) };
+  const get = (r, k) => map[k] >= 0 ? r[map[k]] : '';
+  const rows = [];
+  for (const r of aoa.slice(map.header + 1)) {
+    if (!r.some(c => String(c).trim())) continue;
+    if (kind === 'orders') {
+      const status = norm(get(r, 'status'));
+      rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), fee: toNum(get(r, 'fee')), cancelled: /ملغ|الغاء|cancel|مرتجع|refund/.test(status) });
+    } else if (kind === 'sales') {
+      const name = String(get(r, 'name')).trim();
+      if (!name || SUBTOTAL.test(norm(name))) continue;
+      rows.push({ store: String(get(r, 'store')), code: String(get(r, 'code')).trim(), name, brand: String(get(r, 'brand')), qty: toNum(get(r, 'qty')), sales: toNum(get(r, 'sales')) });
+    } else if (kind === 'costs') {
+      const cost = toNum(get(r, 'cost'));
+      if (!cost) continue;
+      rows.push({ code: String(get(r, 'code')).trim(), name: String(get(r, 'name')).trim(), brand: String(get(r, 'brand')), cost });
+    }
+  }
+  return { rows, map };
+}
+
+/* ---------- computation ---------- */
+function compute() {
+  const set = store.settings;
+  const c = {};
+  for (const ce of CENTERS) c[ce.id] = { salesRev: 0, delIn: 0, delOut: 0, delIS: 0, cogs: 0, cogsIS: 0, expenses: 0, fuelOwn: 0, packOwn: 0, fuelAlloc: 0, packAlloc: 0, ordIn: 0, ordOut: 0, expLines: {} };
+
+  // Income statement
+  for (const r of S.is?.rows || []) {
+    const cat = S.cls[r.account] || classify(r.account);
+    const a = Math.abs(r.amount), x = c[r.center];
+    if (!x) continue;
+    if (cat === 'sales') x.salesRev += a;
+    else if (cat === 'contra') x.salesRev -= a;
+    else if (cat === 'delivery') x.delIS += a;
+    else if (cat === 'cogs') x.cogsIS += a;
+    else if (cat === 'fuel') x.fuelOwn += a;
+    else if (cat === 'pack') x.packOwn += a;
+    else if (cat === 'expense') { x.expenses += a; x.expLines[r.account] = (x.expLines[r.account] || 0) + a; }
+  }
+
+  // Orders
+  const riy = set.riyadh.split(/[,،]/).map(norm).filter(Boolean);
+  const unknownStores = {};
+  let cancelled = 0;
+  for (const o of S.orders?.rows || []) {
+    if (o.cancelled) { cancelled++; continue; }
+    const cid = matchCenter(o.store);
+    if (!cid) { unknownStores[o.store || '(فارغ)'] = (unknownStores[o.store || '(فارغ)'] || 0) + 1; continue; }
+    const inside = riy.some(k => norm(o.city).includes(k));
+    if (inside) { c[cid].ordIn++; c[cid].delIn += o.fee; } else { c[cid].ordOut++; c[cid].delOut += o.fee; }
+  }
+  const hasOrders = !!(S.orders?.rows?.length);
+  const totIn = CENTERS.reduce((s, ce) => s + c[ce.id].ordIn, 0);
+  const totAll = CENTERS.reduce((s, ce) => s + c[ce.id].ordIn + c[ce.id].ordOut, 0);
+  const fuelIS = CENTERS.reduce((s, ce) => s + c[ce.id].fuelOwn, 0);
+  const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0);
+  const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : fuelIS;
+  const packTotal = set.packManual !== '' && set.packManual != null ? +set.packManual : packIS;
+  for (const ce of CENTERS) {
+    const x = c[ce.id];
+    if (hasOrders && totIn) x.fuelAlloc = fuelTotal * x.ordIn / totIn; else if (!hasOrders) x.fuelAlloc = x.fuelOwn;
+    if (hasOrders && totAll) x.packAlloc = packTotal * (x.ordIn + x.ordOut) / totAll; else if (!hasOrders) x.packAlloc = x.packOwn;
+    if (!(hasOrders && set.deliverySource === 'orders')) { x.delIn = x.delIS; x.delOut = 0; }
+  }
+
+  // Wholesale brands
+  const costByCode = new Map(), costByName = new Map(), brandByCode = new Map();
+  for (const r of S.costs?.rows || []) {
+    if (r.code) { costByCode.set(norm(r.code), r.cost); if (r.brand) brandByCode.set(norm(r.code), r.brand); }
+    if (r.name) { costByName.set(norm(r.name), r.cost); if (r.brand && !r.code) brandByCode.set('n:' + norm(r.name), r.brand); }
+  }
+  const ws = { byBrand: {}, matrix: {}, unmatched: {}, sales: 0, cost: 0, qty: 0 };
+  for (const b of BRANDS) ws.byBrand[b.id] = { qty: 0, sales: 0, cost: 0 };
+  for (const f of S.sales) {
+    for (const r of f.rows) {
+      const brandTxt = r.brand || brandByCode.get(norm(r.code)) || brandByCode.get('n:' + norm(r.name)) || '';
+      const bid = matchBrand(brandTxt) || matchBrand(r.name);
+      if (!bid) continue;
+      const center = matchCenter(r.store) || f.center;
+      let unit = costByCode.get(norm(r.code));
+      if (unit == null) unit = costByName.get(norm(r.name));
+      const cost = (unit || 0) * r.qty;
+      if (unit == null) { const k = `${r.code}|${r.name}`; ws.unmatched[k] = ws.unmatched[k] || { code: r.code, name: r.name, brand: bid, qty: 0, sales: 0 }; ws.unmatched[k].qty += r.qty; ws.unmatched[k].sales += r.sales; }
+      const B = ws.byBrand[bid]; B.qty += r.qty; B.sales += r.sales; B.cost += cost;
+      ws.matrix[center] = ws.matrix[center] || {};
+      const M = ws.matrix[center][bid] = ws.matrix[center][bid] || { qty: 0, sales: 0, cost: 0 };
+      M.qty += r.qty; M.sales += r.sales; M.cost += cost;
+      ws.sales += r.sales; ws.cost += cost; ws.qty += r.qty;
+    }
+  }
+  const hasSales = S.sales.some(f => f.rows.length);
+
+  for (const ce of CENTERS) {
+    const x = c[ce.id];
+    x.cogs = x.cogsIS;
+    if (ce.id === 'wholesale' && hasSales) {
+      if (set.wsRevenue === 'sales') x.salesRev = ws.sales;
+      if (set.wsCost === 'calc') x.cogs = ws.cost;
+    }
+    x.delivery = x.delIn + x.delOut;
+    x.revenue = x.salesRev + x.delivery;
+    x.gross = x.revenue - x.cogs;
+    x.totalExp = x.expenses + x.fuelAlloc + x.packAlloc;
+    x.net = x.gross - x.totalExp;
+  }
+  R = { c, ws, hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+        fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
+  return R;
+}
+function summary(r) {
+  const out = {};
+  for (const ce of CENTERS) { const x = r.c[ce.id]; out[ce.id] = { revenue: x.revenue, gross: x.gross, net: x.net, delivery: x.delivery, cogs: x.cogs, exp: x.totalExp }; }
+  return out;
+}
+
+/* ---------- tooltip ---------- */
+const tip = $('#tip');
+function showTip(e, html) { tip.innerHTML = html; tip.hidden = false; moveTip(e); }
+function moveTip(e) { const w = tip.offsetWidth, h = tip.offsetHeight; let x = e.clientX + 14, y = e.clientY + 14; if (x + w > innerWidth - 8) x = e.clientX - w - 14; if (y + h > innerHeight - 8) y = e.clientY - h - 14; tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px'; }
+function hideTip() { tip.hidden = true; }
+function bindTips(root, getHtml) {
+  root.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('pointerenter', e => showTip(e, getHtml(el.dataset.tip)));
+    el.addEventListener('pointermove', moveTip);
+    el.addEventListener('pointerleave', hideTip);
+  });
+}
+const tipRow = (k, v, cls = '') => `<div class="row"><span>${k}</span><b class="num ${cls}">${v}</b></div>`;
+
+/* ---------- charts (hand-built SVG) ---------- */
+function niceScale(min, max, n = 4) {
+  if (min === max) { max = min + 1; }
+  const span = max - min, step0 = span / n, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= step0);
+  const lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+  const ticks = []; for (let v = lo; v <= hi + step / 2; v += step) ticks.push(+v.toFixed(6));
+  return { lo, hi, ticks };
+}
+const short = n => { const a = Math.abs(n); return (n < 0 ? '−' : '') + (a >= 1e6 ? fmt(a / 1e6, 1) + 'M' : a >= 1e3 ? fmt(a / 1e3, a >= 1e4 ? 0 : 1) + 'K' : fmt(a)); };
+
+function columnChart(el, items, opts = {}) {
+  // items: [{key,label,value,color,tip}]
+  if (!items.length) { el.innerHTML = '<div class="empty">لا توجد بيانات بعد</div>'; return; }
+  const W = 520, H = 260, m = { t: 22, r: 12, b: 34, l: 48 };
+  const vals = items.map(i => i.value);
+  const sc = niceScale(Math.min(0, ...vals), Math.max(0, ...vals));
+  const y = v => m.t + (sc.hi - v) / (sc.hi - sc.lo) * (H - m.t - m.b);
+  const band = (W - m.l - m.r) / items.length, bw = Math.min(56, band * 0.56);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || '')}">`;
+  for (const t of sc.ticks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="1"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" class="num">${short(t)}</text>`;
+  s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)" stroke-width="1.5"/>`;
+  // RTL: first item on the right
+  items.forEach((it, i) => {
+    const cx = W - m.r - band * (i + 0.5);
+    const y0 = y(0), y1 = y(it.value), top = Math.min(y0, y1), h = Math.max(1, Math.abs(y1 - y0));
+    const r = Math.min(4, h / 2);
+    const up = it.value >= 0;
+    // rounded data-end, square at baseline
+    const x0 = cx - bw / 2, x1 = cx + bw / 2;
+    const d = up
+      ? `M${x0},${y0} V${top + r} Q${x0},${top} ${x0 + r},${top} H${x1 - r} Q${x1},${top} ${x1},${top + r} V${y0} Z`
+      : `M${x0},${y0} V${top + h - r} Q${x0},${top + h} ${x0 + r},${top + h} H${x1 - r} Q${x1},${top + h} ${x1},${top + h - r} V${y0} Z`;
+    s += `<rect x="${cx - band / 2}" y="${m.t}" width="${band}" height="${H - m.t - m.b}" fill="transparent" data-tip="${i}"/>`;
+    s += `<path d="${d}" fill="var(${it.color})" pointer-events="none"/>`;
+    s += `<text x="${cx}" y="${up ? top - 6 : top + h + 14}" text-anchor="middle" class="lbl-strong num">${short(it.value)}</text>`;
+    s += `<text x="${cx}" y="${H - m.b + 18}" text-anchor="middle">${esc(it.label)}</text>`;
+  });
+  s += '</svg>';
+  el.innerHTML = s;
+  bindTips(el, i => items[i].tip);
+}
+
+function stackedColumns(el, items, segs, opts = {}) {
+  // items: [{label, values:{seg:v}, tip}], segs: [{key,label,color}]
+  if (!items.length || items.every(it => segs.every(sg => !it.values[sg.key]))) { el.innerHTML = '<div class="empty">لا توجد بيانات بعد</div>'; return; }
+  const W = 520, H = 260, m = { t: 22, r: 12, b: 34, l: 48 };
+  const totals = items.map(it => segs.reduce((s, sg) => s + Math.max(0, it.values[sg.key] || 0), 0));
+  const sc = niceScale(0, Math.max(...totals));
+  const y = v => m.t + (sc.hi - v) / (sc.hi - sc.lo) * (H - m.t - m.b);
+  const band = (W - m.l - m.r) / items.length, bw = Math.min(56, band * 0.56);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || '')}">`;
+  for (const t of sc.ticks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" class="num">${short(t)}</text>`;
+  s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)" stroke-width="1.5"/>`;
+  items.forEach((it, i) => {
+    const cx = W - m.r - band * (i + 0.5), x0 = cx - bw / 2;
+    let acc = 0;
+    const visible = segs.filter(sg => (it.values[sg.key] || 0) > 0);
+    visible.forEach((sg, j) => {
+      const v = it.values[sg.key];
+      const yb = y(acc), yt = y(acc + v); acc += v;
+      const gap = j > 0 ? 2 : 0;
+      const h = Math.max(0, yb - yt - gap);
+      if (j === visible.length - 1 && h > 4) {
+        const r = 4, top = yt, base = yb - gap;
+        s += `<path d="M${x0},${base} V${top + r} Q${x0},${top} ${x0 + r},${top} H${x0 + bw - r} Q${x0 + bw},${top} ${x0 + bw},${top + r} V${base} Z" fill="var(${sg.color})" pointer-events="none"/>`;
+      } else s += `<rect x="${x0}" y="${yt}" width="${bw}" height="${h}" fill="var(${sg.color})" pointer-events="none"/>`;
+    });
+    s += `<rect x="${cx - band / 2}" y="${m.t}" width="${band}" height="${H - m.t - m.b}" fill="transparent" data-tip="${i}"/>`;
+    s += `<text x="${cx}" y="${y(totals[i]) - 6}" text-anchor="middle" class="lbl-strong num">${short(totals[i])}</text>`;
+    s += `<text x="${cx}" y="${H - m.b + 18}" text-anchor="middle">${esc(it.label)}</text>`;
+  });
+  s += '</svg>';
+  s += `<div class="legend">${segs.map(sg => `<span><i class="dot" style="background:var(${sg.color})"></i>${esc(sg.label)}</span>`).join('')}</div>`;
+  el.innerHTML = s;
+  bindTips(el, i => items[i].tip);
+}
+
+function lineChart(el, months, series) {
+  // series: [{id,label,color,values:[...]}]
+  if (months.length < 2) { el.innerHTML = '<div class="empty">احفظ شهرين أو أكثر لعرض الاتجاه الشهري</div>'; return; }
+  const W = 520, H = 260, m = { t: 16, r: 16, b: 34, l: 52 };
+  const all = series.flatMap(s => s.values);
+  const sc = niceScale(Math.min(0, ...all), Math.max(0, ...all));
+  const x = i => m.l + i * (W - m.l - m.r) / (months.length - 1);
+  const y = v => m.t + (sc.hi - v) / (sc.hi - sc.lo) * (H - m.t - m.b);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="صافي الربح الشهري">`;
+  for (const t of sc.ticks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" class="num">${short(t)}</text>`;
+  if (sc.lo < 0) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)" stroke-width="1.5"/>`;
+  const every = Math.ceil(months.length / 6);
+  months.forEach((mo, i) => { if (i % every === 0 || i === months.length - 1) s += `<text x="${x(i)}" y="${H - m.b + 18}" text-anchor="middle">${esc(monthLabel(mo))}</text>`; });
+  for (const se of series) {
+    s += `<polyline fill="none" stroke="var(${se.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${se.values.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"/>`;
+    const li = se.values.length - 1;
+    s += `<circle cx="${x(li)}" cy="${y(se.values[li])}" r="4" fill="var(${se.color})" stroke="var(--surface)" stroke-width="2"/>`;
+  }
+  s += `<line id="xh" x1="0" x2="0" y1="${m.t}" y2="${H - m.b}" stroke="var(--axis)" visibility="hidden"/>`;
+  months.forEach((mo, i) => {
+    const w = (W - m.l - m.r) / (months.length - 1);
+    s += `<rect x="${x(i) - w / 2}" y="${m.t}" width="${w}" height="${H - m.t - m.b}" fill="transparent" data-tip="${i}"/>`;
+  });
+  s += '</svg>';
+  s += `<div class="legend">${series.map(se => `<span><i class="dot" style="background:var(${se.color})"></i>${esc(se.label)}</span>`).join('')}</div>`;
+  el.innerHTML = s;
+  const xh = el.querySelector('#xh');
+  el.querySelectorAll('[data-tip]').forEach(r => {
+    r.addEventListener('pointerenter', () => { const i = +r.dataset.tip; xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.setAttribute('visibility', 'visible'); });
+    r.addEventListener('pointerleave', () => xh.setAttribute('visibility', 'hidden'));
+  });
+  bindTips(el, i => `<b>${esc(monthLabel(months[i]))}</b>` + series.map(se => tipRow(`<i class="dot" style="background:var(${se.color});display:inline-block"></i> ${esc(se.label)}`, money(se.values[i]), se.values[i] < 0 ? 'neg' : '')).join(''));
+}
+
+/* ---------- rendering ---------- */
+function renderChips() {
+  $('#centerChips').innerHTML = CENTERS.map(ce => `<button class="chip" data-c="${ce.id}" aria-pressed="${selected.has(ce.id)}"><i class="dot" style="background:var(${ce.color})"></i>${ce.name}</button>`).join('');
+  $('#centerChips').querySelectorAll('.chip').forEach(b => b.onclick = () => {
+    const id = b.dataset.c;
+    if (selected.has(id)) { if (selected.size > 1) selected.delete(id); } else selected.add(id);
+    renderResults();
+  });
+}
+function signed(n) { return `<span class="num ${n < 0 ? 'neg' : ''}">${money(n)}</span>`; }
+
+function renderResults() {
+  renderChips();
+  const r = R, sel = CENTERS.filter(ce => selected.has(ce.id));
+  const sum = k => sel.reduce((s, ce) => s + r.c[ce.id][k], 0);
+  const rev = sum('revenue'), gross = sum('gross'), net = sum('net'), del = sum('delivery');
+  // previous saved month for deltas
+  const months = Object.keys(store.history).sort();
+  const prevKey = months.filter(m => m < $('#month').value).pop();
+  const prev = prevKey ? store.history[prevKey] : null;
+  const prevSum = k => prev ? sel.reduce((s, ce) => s + (prev[ce.id]?.[k] || 0), 0) : null;
+  const delta = (cur, k) => {
+    const p = prevSum(k); if (p == null) return '';
+    const d = cur - p, arrow = d >= 0 ? '▲' : '▼';
+    return `<div class="sub"><span class="${d >= 0 ? 'pos' : 'neg'}">${arrow} <span class="num">${money(Math.abs(d))}</span></span> مقارنة بـ ${esc(monthLabel(prevKey))}</div>`;
+  };
+  $('#kpis').innerHTML = [
+    ['إجمالي الإيرادات', rev, 'revenue', `منها توصيل <span class="num">${money(del)}</span>`],
+    ['مجمل الربح', gross, 'gross', `هامش <span class="num">${pct(gross, rev)}</span>`],
+    ['صافي الربح', net, 'net', `هامش صافي <span class="num">${pct(net, rev)}</span>`],
+    ['المصروفات بعد التحميل', sum('totalExp'), 'exp', `محروقات وتغليف <span class="num">${money(sum('fuelAlloc') + sum('packAlloc'))}</span>`],
+  ].map(([l, v, k, sub]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${v < 0 ? 'neg' : ''}">${money(v)}</div><div class="sub">${sub}</div>${delta(v, k)}</div>`).join('');
+
+  columnChart($('#chartNet'), sel.map(ce => {
+    const x = r.c[ce.id];
+    return { label: ce.short, value: x.net, color: ce.color,
+      tip: `<b>${ce.name}</b>${tipRow('الإيرادات', money(x.revenue))}${tipRow('مجمل الربح', money(x.gross))}${tipRow('المصروفات', money(x.totalExp))}${tipRow('صافي الربح', money(x.net), x.net < 0 ? 'neg' : '')}${tipRow('الهامش', pct(x.net, x.revenue))}` };
+  }), { label: 'صافي الربح حسب مركز البيع' });
+
+  const hist = { ...store.history };
+  if (r.hasIS) hist[$('#month').value] = summary(r);
+  const hm = Object.keys(hist).sort().slice(-12);
+  lineChart($('#chartTrend'), hm, sel.map(ce => ({ id: ce.id, label: ce.short, color: ce.color, values: hm.map(mo => hist[mo][ce.id]?.net || 0) })));
+
+  // P&L table
+  const lines = [
+    ['إيرادات المبيعات', 'salesRev', 'indent'],
+    ['إيراد التوصيل داخل الرياض', 'delIn', 'indent'],
+    ['إيراد التوصيل خارج الرياض', 'delOut', 'indent'],
+    ['إجمالي الإيرادات', 'revenue', 'sub'],
+    ['تكلفة البضاعة المباعة', 'cogs', 'indent', -1],
+    ['مجمل الربح', 'gross', 'sub'],
+    ['المصروفات التشغيلية المباشرة', 'expenses', 'indent', -1],
+    ['محروقات محمّلة (طلبات الرياض)', 'fuelAlloc', 'indent', -1],
+    ['تغليف محمّل (كل الطلبات)', 'packAlloc', 'indent', -1],
+    ['صافي الربح', 'net', 'sum'],
+  ];
+  let t = `<table><thead><tr><th>البند</th>${sel.map(ce => `<th class="n"><i class="dot" style="background:var(${ce.color});display:inline-block;margin-inline-end:6px"></i>${ce.name}</th>`).join('')}<th class="n">الإجمالي</th></tr></thead><tbody>`;
+  for (const [label, k, cls, sign = 1] of lines) {
+    const vals = sel.map(ce => r.c[ce.id][k] * sign);
+    t += `<tr class="${cls}"><td>${label}</td>${vals.map(v => `<td class="n">${signed(v)}</td>`).join('')}<td class="n">${signed(vals.reduce((a, b) => a + b, 0))}</td></tr>`;
+  }
+  const revs = sel.map(ce => r.c[ce.id].revenue), nets = sel.map(ce => r.c[ce.id].net);
+  t += `<tr><td>هامش صافي الربح</td>${sel.map((ce, i) => `<td class="n num">${pct(nets[i], revs[i])}</td>`).join('')}<td class="n num">${pct(nets.reduce((a, b) => a + b, 0), revs.reduce((a, b) => a + b, 0))}</td></tr>`;
+  t += `<tr><td>حصة المركز من صافي ربح الشركة</td>${sel.map((ce, i) => `<td class="n num">${pct(nets[i], nets.reduce((a, b) => a + b, 0))}</td>`).join('')}<td class="n num">100%</td></tr>`;
+  t += '</tbody></table>';
+  $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
+  const notes = [];
+  if (r.hasSales && store.settings.wsRevenue === 'sales') notes.push('إيراد الجملة = مبيعات البراندات في تقارير المتاجر');
+  if (r.hasSales && store.settings.wsCost === 'calc') notes.push('تكلفة الجملة محسوبة من جدول التكلفة');
+  $('#plNote').textContent = notes.join(' · ');
+}
+
+function renderDelivery() {
+  const r = R;
+  const stores = CENTERS.filter(ce => r.c[ce.id].ordIn + r.c[ce.id].ordOut > 0);
+  const delIn = stores.reduce((s, ce) => s + r.c[ce.id].delIn, 0), delOut = stores.reduce((s, ce) => s + r.c[ce.id].delOut, 0);
+  $('#delKpis').innerHTML = [
+    ['طلبات داخل الرياض', fmt(r.totIn), `من أصل <span class="num">${fmt(r.totAll)}</span> طلب${r.cancelled ? ` · استُبعد <span class="num">${fmt(r.cancelled)}</span> ملغي` : ''}`],
+    ['إيراد التوصيل', money(delIn + delOut), `داخل <span class="num">${money(delIn)}</span> · خارج <span class="num">${money(delOut)}</span>`],
+    ['تكلفة المحروقات للطلب', fmt(r.fuelPerOrder, 2), `إجمالي المحروقات <span class="num">${money(r.fuelTotal)}</span>`],
+    ['تكلفة التغليف للطلب', fmt(r.packPerOrder, 2), `إجمالي التغليف <span class="num">${money(r.packTotal)}</span>`],
+  ].map(([l, v, sub]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num">${v}</div><div class="sub">${sub}</div></div>`).join('');
+
+  if (!r.hasOrders) {
+    $('#delTable').innerHTML = '<div class="empty">ارفع تقرير طلبات المتاجر من تبويب المدخلات</div>';
+    $('#chartDelivery').innerHTML = '<div class="empty">لا توجد بيانات بعد</div>';
+    return;
+  }
+  let t = `<table><thead><tr><th>المتجر</th><th class="n">طلبات الرياض</th><th class="n">طلبات خارج الرياض</th><th class="n">إيراد توصيل الرياض</th><th class="n">إيراد توصيل خارج الرياض</th><th class="n">نسبة تحمل المحروقات</th><th class="n">المحروقات المحمّلة</th><th class="n">نسبة تحمل التغليف</th><th class="n">التغليف المحمّل</th></tr></thead><tbody>`;
+  const tot = { a: 0, b: 0, c: 0, d: 0, f: 0, p: 0 };
+  for (const ce of stores) {
+    const x = r.c[ce.id];
+    tot.a += x.ordIn; tot.b += x.ordOut; tot.c += x.delIn; tot.d += x.delOut; tot.f += x.fuelAlloc; tot.p += x.packAlloc;
+    t += `<tr><td><i class="dot" style="background:var(${ce.color});display:inline-block;margin-inline-end:6px"></i>${ce.name}</td><td class="n">${fmt(x.ordIn)}</td><td class="n">${fmt(x.ordOut)}</td><td class="n">${money(x.delIn)}</td><td class="n">${money(x.delOut)}</td><td class="n">${pct(x.ordIn, r.totIn)}</td><td class="n">${money(x.fuelAlloc)}</td><td class="n">${pct(x.ordIn + x.ordOut, r.totAll)}</td><td class="n">${money(x.packAlloc)}</td></tr>`;
+  }
+  t += `<tr class="sum"><td>الإجمالي</td><td class="n">${fmt(tot.a)}</td><td class="n">${fmt(tot.b)}</td><td class="n">${money(tot.c)}</td><td class="n">${money(tot.d)}</td><td class="n">100%</td><td class="n">${money(tot.f)}</td><td class="n">100%</td><td class="n">${money(tot.p)}</td></tr></tbody></table>`;
+  const unk = Object.entries(r.unknownStores);
+  if (unk.length) t += `<p class="note">طلبات لم يُتعرف على متجرها (لم تُحتسب): ${unk.map(([k, v]) => `${esc(k)} (<span class="num">${v}</span>)`).join('، ')}</p>`;
+  $('#delTable').innerHTML = t;
+
+  stackedColumns($('#chartDelivery'), stores.map(ce => {
+    const x = r.c[ce.id];
+    return { label: ce.short, values: { in: x.delIn, out: x.delOut },
+      tip: `<b>${ce.name}</b>${tipRow('داخل الرياض', money(x.delIn))}${tipRow('خارج الرياض', money(x.delOut))}${tipRow('عدد الطلبات', fmt(x.ordIn + x.ordOut))}` };
+  }), [{ key: 'in', label: 'داخل الرياض', color: '--s1' }, { key: 'out', label: 'خارج الرياض', color: '--s2' }], { label: 'إيراد التوصيل' });
+}
+
+function renderWholesale() {
+  const r = R, ws = r.ws, x = r.c.wholesale;
+  const gp = ws.sales - ws.cost;
+  $('#wsKpis').innerHTML = [
+    ['مبيعات براندات الجملة', money(ws.sales), `كمية <span class="num">${fmt(ws.qty)}</span>`],
+    ['تكلفة بضاعة الجملة', money(ws.cost), `من جدول التكلفة`],
+    ['مجمل ربح البراندات', money(gp), `هامش <span class="num">${pct(gp, ws.sales)}</span>`],
+    ['صافي ربح الجملة بعد المصروف', money(x.net), `هامش صافي <span class="num">${pct(x.net, x.revenue)}</span>`],
+  ].map(([l, v, sub]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${String(v).startsWith('−') ? 'neg' : ''}">${v}</div><div class="sub">${sub}</div></div>`).join('');
+
+  stackedColumns($('#chartBrands'), BRANDS.map(b => {
+    const B = ws.byBrand[b.id];
+    return { label: b.name, values: { cost: B.cost, gp: Math.max(0, B.sales - B.cost) },
+      tip: `<b>${b.name}</b>${tipRow('الكمية', fmt(B.qty))}${tipRow('المبيعات', money(B.sales))}${tipRow('التكلفة', money(B.cost))}${tipRow('مجمل الربح', money(B.sales - B.cost), B.sales - B.cost < 0 ? 'neg' : '')}${tipRow('الهامش', pct(B.sales - B.cost, B.sales))}` };
+  }), [{ key: 'cost', label: 'التكلفة', color: '--cost' }, { key: 'gp', label: 'مجمل الربح', color: '--s3' }], { label: 'براندات الجملة' });
+
+  const rows = [
+    ['إيراد الجملة', x.salesRev, 'sub'],
+    ['تكلفة بضاعة الجملة', -x.cogs, 'indent'],
+    ['مجمل الربح', x.gross - x.delivery, 'sub'],
+    ...Object.entries(x.expLines).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, -v, 'indent']),
+    ...(x.fuelAlloc ? [['محروقات محمّلة', -x.fuelAlloc, 'indent']] : []),
+    ...(x.packAlloc ? [['تغليف محمّل', -x.packAlloc, 'indent']] : []),
+    ...(x.delivery ? [['إيراد توصيل', x.delivery, 'indent']] : []),
+    ['صافي ربح الجملة', x.net, 'sum'],
+  ];
+  $('#wsPL').innerHTML = `<table><tbody>${rows.map(([l, v, c]) => `<tr class="${c}"><td>${esc(l)}</td><td class="n">${signed(v)}</td></tr>`).join('')}</tbody></table>`;
+  $('#wsNote').textContent = store.settings.wsRevenue === 'sales' ? 'الإيراد من تقارير المبيعات، المصروف من مركز الجملة في قائمة الدخل' : 'الإيراد والمصروف من مركز الجملة في قائمة الدخل';
+
+  const centers = CENTERS.filter(ce => ws.matrix[ce.id]);
+  if (!centers.length) { $('#wsMatrix').innerHTML = '<div class="empty">ارفع تقارير المبيعات وجدول تكلفة الجملة من تبويب المدخلات</div>'; }
+  else {
+    let t = `<table><thead><tr><th>المتجر</th>${BRANDS.map(b => `<th class="n">${b.name}: الكمية</th><th class="n">${b.name}: التكلفة</th>`).join('')}<th class="n">إجمالي المبيعات</th><th class="n">إجمالي التكلفة</th><th class="n">مجمل الربح</th></tr></thead><tbody>`;
+    for (const ce of centers) {
+      const M = ws.matrix[ce.id]; let s = 0, c = 0;
+      t += `<tr><td>${ce.name}</td>${BRANDS.map(b => { const v = M[b.id] || { qty: 0, cost: 0, sales: 0 }; s += v.sales; c += v.cost; return `<td class="n">${fmt(v.qty)}</td><td class="n">${money(v.cost)}</td>`; }).join('')}<td class="n">${money(s)}</td><td class="n">${money(c)}</td><td class="n">${signed(s - c)}</td></tr>`;
+    }
+    t += `<tr class="sum"><td>الإجمالي</td>${BRANDS.map(b => `<td class="n">${fmt(ws.byBrand[b.id].qty)}</td><td class="n">${money(ws.byBrand[b.id].cost)}</td>`).join('')}<td class="n">${money(ws.sales)}</td><td class="n">${money(ws.cost)}</td><td class="n">${signed(gp)}</td></tr></tbody></table>`;
+    $('#wsMatrix').innerHTML = t;
+  }
+  const un = Object.values(ws.unmatched);
+  $('#wsUnmatchedCard').hidden = !un.length;
+  if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الكود</th><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.code)}</td><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderInputs() {
+  const st = (id, html) => { $(`#${id} .status`).innerHTML = html; };
+  st('up-is', S.is ? `<span class="badge ok">✓ ${esc(S.is.fileName)}</span> <span class="num">${fmt(S.is.rows.length)}</span> قيد` : '<span class="badge">لم يُرفع</span>');
+  st('up-orders', S.orders ? `<span class="badge ok">✓ ${esc(S.orders.fileName)}</span> <span class="num">${fmt(S.orders.rows.length)}</span> طلب` : '<span class="badge">لم يُرفع</span>');
+  st('up-costs', S.costs ? `<span class="badge ok">✓ ${esc(S.costs.fileName)}</span> <span class="num">${fmt(S.costs.rows.length)}</span> صنف` : '<span class="badge">لم يُرفع</span>');
+  st('up-sales', S.sales.length ? S.sales.map((f, i) => `<div class="file-row"><span class="badge ok">✓ ${esc(f.fileName)}</span> ${CMAP[f.center]?.name || 'حسب عمود المتجر'} · <span class="num">${fmt(f.rows.length)}</span> صف <button class="btn small" data-rm="${i}">حذف</button></div>`).join('') : '<span class="badge">لم يُرفع</span>');
+  $('#up-sales .status').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.sales.splice(+b.dataset.rm, 1); raw.sales?.splice(+b.dataset.rm, 1); refresh(); });
+
+  // classification table
+  const accts = {};
+  for (const r of S.is?.rows || []) { accts[r.account] = accts[r.account] || {}; accts[r.account][r.center] = (accts[r.account][r.center] || 0) + r.amount; }
+  const names = Object.keys(accts);
+  $('#clsTable').innerHTML = names.length ? `<table><thead><tr><th>الحساب</th><th>التصنيف</th>${CENTERS.map(ce => `<th class="n">${ce.short}</th>`).join('')}</tr></thead><tbody>${names.map((a, i) => `<tr><td>${esc(a)}</td><td><select data-acc="${i}" aria-label="تصنيف ${esc(a)}">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(S.cls[a] || classify(a)) === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>${CENTERS.map(ce => `<td class="n">${accts[a][ce.id] ? money(accts[a][ce.id]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">ارفع قائمة الدخل لعرض الحسابات</div>';
+  $('#clsTable').querySelectorAll('select').forEach(s => s.onchange = () => { S.cls[names[+s.dataset.acc]] = s.value; refresh(); });
+
+  // history
+  const hm = Object.keys(store.history).sort().reverse();
+  $('#historyTable').innerHTML = hm.length ? `<table><thead><tr><th>الشهر</th>${CENTERS.map(ce => `<th class="n">${ce.short}</th>`).join('')}<th class="n">صافي الشركة</th><th></th></tr></thead><tbody>${hm.map(mo => { const h = store.history[mo]; const tot = CENTERS.reduce((s, ce) => s + (h[ce.id]?.net || 0), 0); return `<tr><td>${esc(monthLabel(mo))}${store.months[mo]?.demo ? ' <span class="badge">تجريبي</span>' : ''}</td>${CENTERS.map(ce => `<td class="n">${signed(h[ce.id]?.net || 0)}</td>`).join('')}<td class="n">${signed(tot)}</td><td><button class="btn small" data-del="${mo}">حذف</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">لا توجد أشهر محفوظة بعد</div>';
+  $('#historyTable').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { delete store.history[b.dataset.del]; delete store.months[b.dataset.del]; persist(); refresh(); });
+}
+
+/* ---------- mapping UI ---------- */
+function mappingUI(box, headers, fields, map, onChange) {
+  const opts = ['<option value="-1">—</option>', ...headers.map((h, i) => `<option value="${i}">${esc(h || `عمود ${i + 1}`)}</option>`)].join('');
+  box.innerHTML = `<details><summary style="cursor:pointer;font-size:.82rem;color:var(--ink-2)">ربط الأعمدة</summary><div class="mapping" style="margin-top:8px">${fields.map(([k, label]) => `<label for="${box.id || 'm'}-${k}">${label}</label><select id="${box.id || 'm'}-${k}" data-k="${k}">${opts}</select>`).join('')}</div></details>`;
+  box.querySelectorAll('select').forEach(s => { s.value = String(map[s.dataset.k] ?? -1); s.onchange = () => { map[s.dataset.k] = +s.value; onChange(map); }; });
+}
+function isMappingUI(aoa, map) {
+  const box = $('#up-is .map');
+  const head = aoa[map.header] || [];
+  if (map.mode === 'long') {
+    mappingUI(box, head.map(String), FIELDS.isLong, map, m => { const p = parseIS(aoa, m); S.is.rows = p.rows; refresh(); });
+    return;
+  }
+  const centerOpts = ['<option value="">تجاهل</option>', ...CENTERS.map(ce => `<option value="${ce.id}">${ce.name}</option>`)].join('');
+  box.innerHTML = `<details><summary style="cursor:pointer;font-size:.82rem;color:var(--ink-2)">ربط الأعمدة</summary><div class="mapping" style="margin-top:8px">
+    <label for="isAcc">عمود الحساب</label><select id="isAcc">${head.map((h, i) => `<option value="${i}">${esc(h || `عمود ${i + 1}`)}</option>`).join('')}</select>
+    ${head.map((h, i) => `<label for="isc-${i}">${esc(h || `عمود ${i + 1}`)}</label><select id="isc-${i}" data-i="${i}">${centerOpts}</select>`).join('')}</div></details>`;
+  const acc = box.querySelector('#isAcc'); acc.value = map.account;
+  acc.onchange = () => { map.account = +acc.value; S.is.rows = parseIS(aoa, map).rows; refresh(); };
+  box.querySelectorAll('[data-i]').forEach(s => { s.value = map.cols[+s.dataset.i] || ''; s.onchange = () => { map.cols[+s.dataset.i] = s.value; S.is.rows = parseIS(aoa, map).rows; refresh(); }; });
+}
+
+/* ---------- uploads ---------- */
+function setupDrop(cardId, inputId, handler) {
+  const card = $(`#${cardId}`), drop = card.querySelector('.drop'), input = $(`#${inputId}`);
+  input.onchange = () => { [...input.files].forEach(handler); input.value = ''; };
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); [...e.dataTransfer.files].forEach(handler); });
+}
+async function safeRead(file, cardId) {
+  try { return await readFile(file); }
+  catch (e) { $(`#${cardId} .status`).innerHTML = `<span class="badge">تعذّرت قراءة ${esc(file.name)}. احفظه بصيغة xlsx أو csv وأعد الرفع.</span>`; return null; }
+}
+function leaveDemo() { if (S.demo) { S = blankMonth(); raw = {}; } }
+
+setupDrop('up-is', 'file-is', async file => {
+  const aoa = await safeRead(file, 'up-is'); if (!aoa) return;
+  leaveDemo();
+  const p = parseIS(aoa);
+  S.is = { fileName: file.name, rows: p.rows }; raw.is = aoa;
+  refresh(); isMappingUI(aoa, p.map);
+  toast(p.rows.length ? `قُرئت ${p.rows.length} قيدًا من قائمة الدخل` : 'لم يُعثر على مراكز التكلفة، صحّح ربط الأعمدة');
+});
+setupDrop('up-orders', 'file-orders', async file => {
+  const aoa = await safeRead(file, 'up-orders'); if (!aoa) return;
+  leaveDemo();
+  const p = parseTable('orders', aoa);
+  S.orders = { fileName: file.name, rows: p.rows };
+  refresh();
+  mappingUI($('#up-orders .map'), (aoa[p.map.header] || []).map(String), FIELDS.orders, p.map, m => { S.orders.rows = parseTable('orders', aoa, m).rows; refresh(); });
+});
+setupDrop('up-costs', 'file-costs', async file => {
+  const aoa = await safeRead(file, 'up-costs'); if (!aoa) return;
+  leaveDemo();
+  const p = parseTable('costs', aoa);
+  S.costs = { fileName: file.name, rows: p.rows };
+  refresh();
+  mappingUI($('#up-costs .map'), (aoa[p.map.header] || []).map(String), FIELDS.costs, p.map, m => { S.costs.rows = parseTable('costs', aoa, m).rows; refresh(); });
+});
+setupDrop('up-sales', 'file-sales', async file => {
+  const aoa = await safeRead(file, 'up-sales'); if (!aoa) return;
+  leaveDemo();
+  const p = parseTable('sales', aoa);
+  const center = matchCenter(file.name) || $('#salesCenter').value;
+  const entry = { fileName: file.name, center, rows: p.rows };
+  S.sales.push(entry);
+  refresh();
+  mappingUI($('#up-sales .map'), (aoa[p.map.header] || []).map(String), FIELDS.sales, p.map, m => { entry.rows = parseTable('sales', aoa, m).rows; refresh(); });
+});
+$('#salesCenter').innerHTML = CENTERS.map(ce => `<option value="${ce.id}">${ce.name}</option>`).join('');
+
+/* ---------- demo data ---------- */
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
+function demoMonth(monthKey, k = 1) {
+  const rnd = rng([...monthKey].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7));
+  const j = (v, p = 0.08) => Math.round(v * k * (1 + (rnd() - 0.5) * 2 * p));
+  const base = {
+    exhibit:   { sales: 185000, ret: 4200, cogs: 112000, rent: 38000, wages: 26000, power: 5200, mkt: 6000, fuel: 0, pack: 1800, delivery: 0 },
+    cpstore:   { sales: 142000, ret: 3800, cogs: 84000, rent: 0, wages: 14000, power: 0, mkt: 15500, fuel: 3100, pack: 3900, delivery: 9800 },
+    hamtaro:   { sales: 76000, ret: 2100, cogs: 47000, rent: 0, wages: 9000, power: 0, mkt: 9800, fuel: 1700, pack: 2100, delivery: 5300 },
+    wagy:      { sales: 58000, ret: 1500, cogs: 37500, rent: 0, wages: 8000, power: 0, mkt: 8600, fuel: 1300, pack: 1600, delivery: 4100 },
+    wholesale: { sales: 98000, ret: 2600, cogs: 71000, rent: 12000, wages: 11000, power: 1400, mkt: 1500, fuel: 2200, pack: 900, delivery: 0 },
+  };
+  const accts = [['إيرادات المبيعات', 'sales'], ['مردودات المبيعات', 'ret'], ['تكلفة البضاعة المباعة', 'cogs'], ['الإيجارات', 'rent'], ['الرواتب والأجور', 'wages'],
+    ['الكهرباء والمياه', 'power'], ['التسويق والإعلان', 'mkt'], ['مصروف المحروقات', 'fuel'], ['مواد التغليف', 'pack'], ['إيرادات التوصيل', 'delivery']];
+  const head = ['اسم الحساب', ...CENTERS.map(c => c.name), 'الإجمالي'];
+  const aoa = [['قائمة الدخل بمراكز التكلفة'], head];
+  for (const [name, key] of accts) {
+    const vals = CENTERS.map(c => base[c.id][key] ? j(base[c.id][key]) : 0);
+    vals.push(vals.reduce((a, b) => a + b, 0));
+    aoa.push([name, ...vals]);
+  }
+  aoa.push(['صافي الربح', '', '', '', '', '', '']);
+  // payment gateway commissions for online stores
+  aoa.push(['عمولات بوابات الدفع', 0, j(4200), j(2300), j(1800), 0, 0]);
+
+  const orders = [['رقم الطلب', 'المتجر', 'المدينة', 'رسوم التوصيل', 'الحالة']];
+  const cities = ['الرياض', 'الرياض', 'الرياض', 'الرياض', 'جدة', 'الدمام', 'مكة المكرمة', 'الخبر', 'أبها', 'القصيم'];
+  const plan = [['متجر كيوت بيتس', 620], ['متجر هامتارو', 340], ['متجر واجي', 260]];
+  let n = 10000;
+  for (const [st, cnt] of plan) for (let i = 0; i < Math.round(cnt * k * (0.9 + rnd() * 0.2)); i++) {
+    const city = cities[Math.floor(rnd() * cities.length)], inR = city === 'الرياض';
+    orders.push([n++, st, city, inR ? 15 : 25, rnd() < 0.03 ? 'ملغي' : 'مكتمل']);
+  }
+
+  const items = [
+    ['KN-01', 'كانيفا طعام قطط بالسلمون 2كجم', 'كانيفا', 38, 59], ['KN-02', 'كانيفا طعام قطط صغيرة 1كجم', 'كانيفا', 22, 35], ['KN-03', 'كانيفا معلبات دجاج', 'كانيفا', 4.5, 8],
+    ['RR-01', 'رون رون رمل قطط 10لتر', 'رون رون', 18, 32], ['RR-02', 'رون رون رمل برائحة اللافندر', 'رون رون', 21, 36],
+    ['SH-01', 'شيرمان طعام كلاب 3كجم', 'شيرمان', 55, 85], ['SH-02', 'شيرمان مكافآت كلاب', 'شيرمان', 9, 17],
+    ['CD-01', 'كاندي مكافآت قطط سائلة', 'كاندي', 6, 12], ['CD-02', 'كاندي حلوى قطط بالتونة', 'كاندي', 7.5, 14],
+    ['TOY-01', 'لعبة قطط فأر', '', 3, 10],
+  ];
+  const costs = [['كود الصنف', 'اسم الصنف', 'البراند', 'تكلفة الوحدة'], ...items.filter(i => i[2]).map(i => [i[0], i[1], i[2], i[3]])];
+  const salesFiles = [];
+  const salesPlan = { exhibit: 1.3, cpstore: 1, hamtaro: 0.7, wagy: 0.5, wholesale: 2.6 };
+  for (const [cid, f] of Object.entries(salesPlan)) {
+    const s = [['كود الصنف', 'اسم الصنف', 'البراند', 'الكمية', 'صافي المبيعات']];
+    for (const it of items) {
+      if (cid === 'wholesale' && !it[2]) continue;
+      const q = Math.round((20 + rnd() * 90) * f * k);
+      const price = cid === 'wholesale' ? it[4] * 0.72 : it[4];
+      s.push([it[0], it[1], it[2], q, Math.round(q * price)]);
+    }
+    salesFiles.push({ center: cid, aoa: s, name: `مبيعات ${CMAP[cid].name}.xlsx` });
+  }
+  return { isAoa: aoa, ordersAoa: orders, costsAoa: costs, salesFiles };
+}
+function applyDemo(d, k) {
+  const S2 = blankMonth(); S2.demo = true; S2.k = k;
+  S2.is = { fileName: 'قائمة الدخل (تجريبي).xlsx', rows: parseIS(d.isAoa).rows };
+  S2.orders = { fileName: 'طلبات المتاجر (تجريبي).xlsx', rows: parseTable('orders', d.ordersAoa).rows };
+  S2.costs = { fileName: 'تكلفة الجملة (تجريبي).xlsx', rows: parseTable('costs', d.costsAoa).rows };
+  S2.sales = d.salesFiles.map(f => ({ fileName: f.name, center: f.center, rows: parseTable('sales', f.aoa).rows }));
+  return S2;
+}
+function loadDemo() {
+  const cur = $('#month').value;
+  const [y, mo] = cur.split('-').map(Number);
+  for (let back = 5; back >= 1; back--) {
+    const d = new Date(y, mo - 1 - back, 1), key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (store.history[key] && !store.months[key]?.demo) continue;
+    const k = 0.82 + (5 - back) * 0.04;
+    S = applyDemo(demoMonth(key, k), k);
+    store.history[key] = summary(compute());
+    store.months[key] = { demo: true, k };
+  }
+  S = applyDemo(demoMonth(cur, 1.02), 1.02);
+  raw = {};
+  persist();
+  refresh();
+  toast('حُمّلت بيانات تجريبية لستة أشهر');
+}
+
+/* ---------- month handling ---------- */
+function saveCurrentInputs() {
+  const m = $('#month').value;
+  if (S.demo) { store.months[m] = { demo: true, k: S.k }; }
+  else if (S.is || S.orders || S.sales.length || S.costs) store.months[m] = { data: S };
+  persist();
+}
+function openMonth(m) {
+  const saved = store.months[m];
+  raw = {};
+  ['#up-is', '#up-orders', '#up-sales', '#up-costs'].forEach(id => $(`${id} .map`).innerHTML = '');
+  if (saved?.data) S = saved.data;
+  else if (saved?.demo) S = applyDemo(demoMonth(m, saved.k ?? 1.02), saved.k ?? 1.02);
+  else {
+    // carry the cost table and classifications forward from the latest month that has them
+    const prev = Object.keys(store.months).filter(k => k < m && store.months[k].data).sort().pop();
+    S = blankMonth();
+    if (prev) { S.costs = store.months[prev].data.costs; S.cls = { ...store.months[prev].data.cls }; }
+  }
+  store.lastMonth = m; persist();
+  refresh();
+}
+
+/* ---------- refresh ---------- */
+function refresh() {
+  compute();
+  $('#demoBadge').hidden = !S.demo;
+  renderResults(); renderDelivery(); renderWholesale(); renderInputs();
+  saveCurrentInputs();
+}
+
+/* ---------- wiring ---------- */
+loadStore();
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === t));
+  document.querySelectorAll('section.panel').forEach(p => p.hidden = p.id !== `tab-${t.dataset.tab}`);
+  try { sessionStorage.setItem('cp-tab', t.dataset.tab); } catch (e) {}
+});
+$('#month').onchange = () => { if ($('#month').value) openMonth($('#month').value); };
+$('#saveMonth').onclick = () => {
+  if (!R.hasIS && !R.hasOrders && !R.hasSales) { toast('لا توجد مدخلات لهذا الشهر بعد'); return; }
+  store.history[$('#month').value] = summary(R); persist(); refresh();
+  toast(`حُفظت نتائج ${monthLabel($('#month').value)}`);
+};
+$('#loadDemo').onclick = loadDemo;
+$('#clearMonth').onclick = () => { delete store.months[$('#month').value]; S = blankMonth(); raw = {}; persist(); refresh(); toast('مُسحت مدخلات الشهر'); };
+
+const bindSetting = (id, key, evt = 'change') => { const el = $(id); el.value = store.settings[key] ?? ''; el.addEventListener(evt, () => { store.settings[key] = el.value; persist(); refresh(); }); };
+bindSetting('#setRiyadh', 'riyadh');
+bindSetting('#setDelivery', 'deliverySource');
+bindSetting('#setWs', 'wsRevenue');
+bindSetting('#setWsCost', 'wsCost');
+bindSetting('#fuelManual', 'fuelManual', 'input');
+bindSetting('#packManual', 'packManual', 'input');
+
+$('#exportBackup').onclick = () => {
+  const json = JSON.stringify(store);
+  const ta = $('#backupText'); ta.hidden = false; ta.value = json;
+  // Download where the browser allows it; otherwise the JSON is shown for copying.
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = `cute-pets-dashboard-${$('#month').value}.json`; a.click();
+  } catch (e) {}
+  if (navigator.clipboard) navigator.clipboard.writeText(json).then(() => toast('نُسخت النسخة الاحتياطية'), () => { ta.select(); });
+};
+$('#importBackup').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const s = JSON.parse(await f.text());
+    if (!s.history) throw new Error('bad');
+    store = { ...store, ...s, settings: { ...DEFAULT_SETTINGS, ...(s.settings || {}) } };
+    persist(); openMonth($('#month').value); toast('اُستورِدت النسخة الاحتياطية');
+  } catch (err) { toast('الملف ليس نسخة احتياطية صالحة لهذه اللوحة'); }
+  e.target.value = '';
+};
+
+/* ---------- boot ---------- */
+const startMonth = store.lastMonth || curMonth();
+$('#month').value = startMonth;
+const hasAny = Object.keys(store.months).length || Object.keys(store.history).length;
+if (!hasAny) loadDemo(); else openMonth(startMonth);
+try { const t = sessionStorage.getItem('cp-tab'); if (t) document.querySelector(`.tab[data-tab="${t}"]`)?.click(); } catch (e) {}
+if (typeof XLSX === 'undefined') toast('تعذّر تحميل قارئ ملفات Excel، تحقق من الاتصال');
+})();
+</script>
