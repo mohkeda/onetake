@@ -134,6 +134,13 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
 .toast { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); inset-inline-start: 16px; background: var(--ink); color: var(--bg);
   padding: 8px 14px; border-radius: 8px; z-index: 30; font-size: .85rem; }
 .stack { display: grid; gap: 10px; align-content: start; }
+.grid-2 > .stack { gap: 18px; }
+.stack-lg { display: grid; gap: 18px; }
+#wsBlock .chart { max-width: 620px; margin-inline: auto; }
+.center-sel { font-weight: 600; min-width: 170px; }
+.center-head { display: flex; align-items: center; gap: 10px; }
+.center-head h2 { font-size: 1.2rem; }
+.dot.big { width: 14px; height: 14px; border-radius: 4px; }
 .grid-2 { align-items: start; }
 .file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-block: 3px; }
 @media (prefers-reduced-motion: no-preference) { .tab, .btn, .chip { transition: background .15s, color .15s, opacity .15s; } }
@@ -152,16 +159,14 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         </div>
       </div>
       <div class="controls">
+        <div class="field"><label for="centerSel">المتجر</label><select id="centerSel" class="center-sel"></select></div>
         <div class="field"><label for="month">الشهر</label><input type="month" id="month"></div>
         <button class="btn primary" id="saveMonth">حفظ نتائج الشهر</button>
         <button class="btn" id="loadDemo">تحميل بيانات تجريبية</button>
       </div>
     </div>
-    <nav class="tabs" role="tablist">
+    <nav class="tabs" role="tablist" id="tabs">
       <button class="tab" role="tab" data-tab="results" aria-selected="true">النتائج</button>
-      <button class="tab" role="tab" data-tab="statement" aria-selected="false">قائمة المركز</button>
-      <button class="tab" role="tab" data-tab="delivery" aria-selected="false">التوصيل وتحميل المصاريف</button>
-      <button class="tab" role="tab" data-tab="wholesale" aria-selected="false">الجملة</button>
       <button class="tab" role="tab" data-tab="inputs" aria-selected="false">المدخلات والإعدادات</button>
     </nav>
   </header>
@@ -185,14 +190,19 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         <div class="card-head"><h2>قائمة الدخل حسب مراكز البيع</h2><p id="plNote"></p></div>
         <div class="table-wrap" id="plTable"></div>
       </div>
+      <div class="card">
+        <div class="card-head"><h2>التوصيل ونسب التحمل</h2><p>المحروقات بعدد طلبات داخل الرياض، والتغليف بعدد كل الطلبات</p></div>
+        <div class="table-wrap" id="delTable"></div>
+      </div>
     </section>
 
-    <!-- CENTER STATEMENT -->
-    <section class="panel" id="tab-statement" hidden>
-      <div class="controls"><div class="field"><label for="stCenter">مركز البيع</label><select id="stCenter"></select></div></div>
+    <!-- CENTER PAGE: one tab per sales center -->
+    <section class="panel" id="tab-center" hidden>
+      <div class="center-head"><i class="dot big" id="cDot"></i><h2 id="stTitle"></h2></div>
+      <div class="kpis" id="cKpis"></div>
       <div class="grid-2">
         <div class="card">
-          <div class="card-head"><h2 id="stTitle"></h2><p>النسبة من إجمالي المصروفات ومن إجمالي الإيرادات</p></div>
+          <div class="card-head"><h2>قائمة الدخل</h2><p>النسبة من إجمالي المصروفات ومن إجمالي الإيرادات</p></div>
           <div class="table-wrap" id="stTable"></div>
         </div>
         <div class="stack">
@@ -201,56 +211,36 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
             <div class="table-wrap" id="stSummary"></div>
           </div>
           <div class="card">
-            <div class="card-head"><h2>المبيعات حسب التصنيف</h2><p id="catNote">من عمود التصنيف في تقرير المبيعات</p></div>
-            <div class="table-wrap" id="stCats"></div>
+            <div class="card-head"><h2>صافي الربح الشهري</h2><p>من الأشهر المحفوظة</p></div>
+            <div id="chartCenterTrend"></div>
+          </div>
+          <div class="card" id="cDelCard">
+            <div class="card-head"><h2>التوصيل والمصاريف المحمّلة</h2></div>
+            <div class="table-wrap" id="cDel"></div>
           </div>
         </div>
       </div>
-    </section>
-
-    <!-- DELIVERY -->
-    <section class="panel" id="tab-delivery" hidden>
-      <div class="kpis" id="delKpis"></div>
       <div class="card">
-        <div class="card-head"><h2>إيراد التوصيل ونسب التحمل لكل متجر</h2><p>المحروقات تُحمَّل بعدد طلبات داخل الرياض، والتغليف بعدد كل الطلبات</p></div>
-        <div class="table-wrap" id="delTable"></div>
+        <div class="card-head"><h2>المبيعات حسب التصنيف</h2><p>من عمود التصنيف في تقرير المبيعات</p></div>
+        <div class="table-wrap" id="stCats"></div>
       </div>
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-head"><h2>إيراد التوصيل حسب المتجر</h2><p>داخل الرياض وخارجها</p></div>
-          <div id="chartDelivery"></div>
-        </div>
-        <div class="card stack">
-          <h2>مبالغ المصاريف الموزعة</h2>
-          <p class="note">تُؤخذ تلقائيًا من حسابات المحروقات والتغليف في قائمة الدخل (مجموع كل المراكز)، ويمكن إدخال مبلغ يدوي بدلًا منها.</p>
-          <div class="settings">
-            <div class="field"><label for="fuelManual">مصروف المحروقات (يدوي)</label><input type="number" id="fuelManual" placeholder="تلقائي من قائمة الدخل" min="0" step="0.01"></div>
-            <div class="field"><label for="packManual">مصروف التغليف (يدوي)</label><input type="number" id="packManual" placeholder="تلقائي من قائمة الدخل" min="0" step="0.01"></div>
-          </div>
-        </div>
+      <div class="card" id="cBrandsCard">
+        <div class="card-head"><h2>براندات الجملة في المتجر</h2><p>تكلفة الاستيراد من إدارة، وتكلفة الجملة بسعر قائمة الجملة</p></div>
+        <div class="table-wrap" id="cBrands"></div>
       </div>
-    </section>
-
-    <!-- WHOLESALE -->
-    <section class="panel" id="tab-wholesale" hidden>
-      <div class="kpis" id="wsKpis"></div>
-      <div class="grid-2">
+      <div class="stack-lg" id="wsBlock">
         <div class="card">
           <div class="card-head"><h2>براندات الجملة: الإيراد والتكلفة</h2><p>طول العمود = إيراد الجملة، مقسوم إلى تكلفة استيراد وربح</p></div>
           <div id="chartBrands"></div>
         </div>
         <div class="card">
-          <div class="card-head"><h2>أرباح الجملة مع المصروف</h2><p id="wsNote"></p></div>
-          <div class="table-wrap" id="wsPL"></div>
+          <div class="card-head"><h2>البراندات حسب المتجر</h2><p>تكلفة الاستيراد من تقارير إدارة، وسعر الجملة من قائمة أسعار الجملة المحفوظة</p></div>
+          <div class="table-wrap" id="wsMatrix"></div>
         </div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h2>البراندات حسب المتجر</h2><p>تكلفة الاستيراد من تقارير إدارة، وسعر الجملة من قائمة أسعار الجملة المحفوظة</p></div>
-        <div class="table-wrap" id="wsMatrix"></div>
-      </div>
-      <div class="card" id="wsUnmatchedCard" hidden>
-        <div class="card-head"><h2>أصناف بدون تكلفة</h2><p>أصناف بيعت في المتاجر وليس لها سعر في قائمة أسعار الجملة، فلم يُحسب عليها فرق</p></div>
-        <div class="table-wrap" id="wsUnmatched"></div>
+        <div class="card" id="wsUnmatchedCard" hidden>
+          <div class="card-head"><h2>أصناف بدون سعر جملة</h2><p>بيعت في المتاجر وليس لها سعر في قائمة أسعار الجملة، فلم يُحسب عليها ربح للجملة</p></div>
+          <div class="table-wrap" id="wsUnmatched"></div>
+        </div>
       </div>
     </section>
 
@@ -295,6 +285,8 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <div class="field"><label for="setRiyadh">كلمات تحديد طلبات الرياض</label><input type="text" id="setRiyadh"></div>
           <div class="field"><label for="setDelivery">مصدر إيراد التوصيل</label>
             <select id="setDelivery"><option value="orders">تقرير الطلبات</option><option value="is">حساب التوصيل في قائمة الدخل</option></select></div>
+          <div class="field"><label for="fuelManual">مصروف المحروقات (يدوي، اختياري)</label><input type="number" id="fuelManual" placeholder="تلقائي من قائمة الدخل" min="0" step="0.01"></div>
+          <div class="field"><label for="packManual">مصروف التغليف (يدوي، اختياري)</label><input type="number" id="packManual" placeholder="تلقائي من قائمة الدخل" min="0" step="0.01"></div>
           <div class="field"><label for="setMainBasis">توزيع مصاريف الرئيسي على المتاجر</label>
             <select id="setMainBasis"><option value="sales">بنسبة المبيعات</option><option value="orders">بعدد الطلبات</option><option value="equal">بالتساوي</option><option value="off">بدون توزيع (عمود مستقل)</option></select></div>
           <div class="field"><label for="setMainKeep">حسابات تبقى على الرئيسي ولا تُوزَّع</label><input type="text" id="setMainKeep" placeholder="مثال: حكومي, قرض"></div>
@@ -971,19 +963,7 @@ function renderResults() {
 function renderDelivery() {
   const r = R;
   const stores = CENTERS.filter(ce => r.c[ce.id].ordIn + r.c[ce.id].ordOut > 0);
-  const delIn = stores.reduce((s, ce) => s + r.c[ce.id].delIn, 0), delOut = stores.reduce((s, ce) => s + r.c[ce.id].delOut, 0);
-  $('#delKpis').innerHTML = [
-    ['طلبات داخل الرياض', fmt(r.totIn), `من أصل <span class="num">${fmt(r.totAll)}</span> طلب${r.cancelled ? ` · استُبعد <span class="num">${fmt(r.cancelled)}</span> ملغي` : ''}`],
-    ['إيراد التوصيل', money(delIn + delOut), `داخل <span class="num">${money(delIn)}</span> · خارج <span class="num">${money(delOut)}</span>`],
-    ['تكلفة المحروقات للطلب', fmt(r.fuelPerOrder, 2), `إجمالي المحروقات <span class="num">${money(r.fuelTotal)}</span>`],
-    ['تكلفة التغليف للطلب', fmt(r.packPerOrder, 2), `إجمالي التغليف <span class="num">${money(r.packTotal)}</span>`],
-  ].map(([l, v, sub]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num">${v}</div><div class="sub">${sub}</div></div>`).join('');
-
-  if (!r.hasOrders) {
-    $('#delTable').innerHTML = '<div class="empty">ارفع تقرير طلبات المتاجر من تبويب المدخلات</div>';
-    $('#chartDelivery').innerHTML = '<div class="empty">لا توجد بيانات بعد</div>';
-    return;
-  }
+  if (!r.hasOrders) { $('#delTable').innerHTML = '<div class="empty">ارفع تقرير طلبات المتاجر من تبويب المدخلات</div>'; return; }
   let t = `<table><thead><tr><th>المتجر</th><th class="n">طلبات الرياض</th><th class="n">طلبات خارج الرياض</th><th class="n">إيراد توصيل الرياض</th><th class="n">إيراد توصيل خارج الرياض</th><th class="n">نسبة تحمل المحروقات</th><th class="n">المحروقات المحمّلة</th><th class="n">نسبة تحمل التغليف</th><th class="n">التغليف المحمّل</th></tr></thead><tbody>`;
   const tot = { a: 0, b: 0, c: 0, d: 0, f: 0, p: 0 };
   for (const ce of stores) {
@@ -994,28 +974,65 @@ function renderDelivery() {
   t += `<tr class="sum"><td>الإجمالي</td><td class="n">${fmt(tot.a)}</td><td class="n">${fmt(tot.b)}</td><td class="n">${money(tot.c)}</td><td class="n">${money(tot.d)}</td><td class="n">100%</td><td class="n">${money(tot.f)}</td><td class="n">100%</td><td class="n">${money(tot.p)}</td></tr></tbody></table>`;
   const unk = Object.entries(r.unknownStores);
   if (unk.length) t += `<p class="note">طلبات لم يُتعرف على متجرها (لم تُحتسب): ${unk.map(([k, v]) => `${esc(k)} (<span class="num">${v}</span>)`).join('، ')}</p>`;
+  t += `<p class="note">تكلفة المحروقات للطلب <b class="num">${fmt(r.fuelPerOrder, 2)}</b> · تكلفة التغليف للطلب <b class="num">${fmt(r.packPerOrder, 2)}</b>${r.cancelled ? ` · استُبعد <span class="num">${fmt(r.cancelled)}</span> طلب ملغي` : ''}</p>`;
   $('#delTable').innerHTML = t;
-
-  stackedColumns($('#chartDelivery'), stores.map(ce => {
-    const x = r.c[ce.id];
-    return { label: ce.short, values: { in: x.delIn, out: x.delOut },
-      tip: `<b>${ce.name}</b>${tipRow('داخل الرياض', money(x.delIn))}${tipRow('خارج الرياض', money(x.delOut))}${tipRow('عدد الطلبات', fmt(x.ordIn + x.ordOut))}` };
-  }), [{ key: 'in', label: 'داخل الرياض', color: '--s1' }, { key: 'out', label: 'خارج الرياض', color: '--s2' }], { label: 'إيراد التوصيل' });
 }
 
 /* ---------- center statement (report layout) ---------- */
 let stCenter = 'hamtaro';
 function renderStatement() {
-  const sel = $('#stCenter');
-  if (!sel.options.length) {
-    sel.innerHTML = CENTERS.map(ce => `<option value="${ce.id}">${ce.name}</option>`).join('');
-    sel.onchange = () => { stCenter = sel.value; try { sessionStorage.setItem('cp-st', stCenter); } catch (e) {} renderStatement(); };
-    try { stCenter = sessionStorage.getItem('cp-st') || stCenter; } catch (e) {}
-  }
-  sel.value = stCenter;
   const ce = CMAP[stCenter], x = R.c[stCenter], mo = $('#month').value;
   const [y, m] = mo.split('-').map(Number);
   $('#stTitle').textContent = `النتائج الشهرية لـ${ce.name} عن شهر ${m}/${y}`;
+  $('#cDot').style.background = `var(${ce.color})`;
+
+  // KPIs with the change from the previous saved month
+  const prevKey = Object.keys(store.history).filter(k => k < mo).sort().pop();
+  const prev = prevKey ? store.history[prevKey][stCenter] : null;
+  const delta = (cur, k, upGood = true) => {
+    if (!prev || prev[k] == null) return '';
+    const d = cur - prev[k], good = upGood ? d >= 0 : d <= 0;
+    return `<div class="sub"><span class="${good ? 'pos' : 'neg'}">${d >= 0 ? '▲' : '▼'} <span class="num">${money(Math.abs(d))}</span></span> مقارنة بـ ${esc(monthLabel(prevKey))}</div>`;
+  };
+  $('#cKpis').innerHTML = [
+    ['إجمالي الإيرادات', x.revenue, 'revenue', `منها مبيعات الجملة <span class="num">${money(x.revBrand)}</span>`, true],
+    ['المصاريف الإدارية', x.adminT, 'admin', `<span class="num">${pct(x.adminT, x.revenue)}</span> من الإيرادات`, false],
+    ['المصاريف التشغيلية', x.opex, 'opex', `<span class="num">${pct(x.opex, x.revenue)}</span> من الإيرادات`, false],
+    ['صافي الربح / الخسارة', x.net, 'net', `هامش صافي <span class="num">${pct(x.net, x.revenue)}</span>`, true],
+  ].map(([l, v, k, sub, up]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${v < 0 ? 'neg' : ''}">${money(v)}</div><div class="sub">${sub}</div>${delta(v, k, up)}</div>`).join('');
+
+  // monthly trend for this center
+  const hist = { ...store.history };
+  if (R.hasIS) hist[mo] = summary(R);
+  const hm = Object.keys(hist).sort().slice(-12);
+  lineChart($('#chartCenterTrend'), hm, [{ id: stCenter, label: 'صافي الربح', color: ce.color, values: hm.map(k => hist[k][stCenter]?.net || 0) }]);
+
+  // delivery and allocated costs
+  const dl = [];
+  if (x.ordIn + x.ordOut) dl.push(['طلبات داخل الرياض', fmt(x.ordIn), ''], ['طلبات خارج الرياض', fmt(x.ordOut), ''],
+    ['إيراد التوصيل داخل الرياض', money(x.delIn), ''], ['خدمات الشحن الخارجي', money(x.delOut), ''],
+    ['نسبة تحمل المحروقات', pct(x.ordIn, R.totIn), money(x.fuelAlloc)], ['نسبة تحمل التغليف', pct(x.ordIn + x.ordOut, R.totAll), money(x.packAlloc)]);
+  if (x.mainShare) dl.push(['حصة مصاريف الرئيسي', `${fmt(x.mainShare * 100, 1)}%`, money(x.mainAdmin + x.mainOp - x.mainRev)]);
+  $('#cDelCard').hidden = !dl.length;
+  $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
+
+  // wholesale brands sold in this store, or the wholesale analysis on the wholesale page
+  const isWs = stCenter === 'wholesale', BM = R.ws.matrix[stCenter];
+  $('#wsBlock').hidden = !isWs;
+  $('#cBrandsCard').hidden = isWs || !BM;
+  if (!isWs && BM) {
+    const tot = { qty: 0, sales: 0, imp: 0, wh: 0 };
+    let bt = `<table><thead><tr><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th><th class="n">تكلفة الاستيراد</th><th class="n">تكلفة الجملة</th><th class="n">ربح المتجر</th></tr></thead><tbody>`;
+    for (const b of BRANDS) {
+      const v = BM[b.id]; if (!v) continue;
+      tot.qty += v.qty; tot.sales += v.sales; tot.imp += v.imp; tot.wh += v.wh;
+      bt += `<tr><td>${b.name}</td><td class="n">${fmt(v.qty)}</td><td class="n">${money(v.sales)}</td><td class="n">${money(v.imp)}</td><td class="n">${money(v.wh)}</td><td class="n">${signed(v.sales - v.wh)}</td></tr>`;
+    }
+    bt += `<tr class="sum"><td>الإجمالي</td><td class="n">${fmt(tot.qty)}</td><td class="n">${money(tot.sales)}</td><td class="n">${money(tot.imp)}</td><td class="n">${money(tot.wh)}</td><td class="n">${signed(tot.sales - tot.wh)}</td></tr></tbody></table>`;
+    $('#cBrands').innerHTML = bt;
+  }
+  if (isWs) renderWholesale();
+
   const rev = x.revenue, exp = x.totalExp;
   const row = (label, v, cls = 'indent', withPct = 'both') => `<tr class="${cls}"><td>${esc(label)}</td><td class="n">${signed(v)}</td>` +
     (withPct === 'rev' ? `<td></td><td class="n num">${pct(v, rev)}</td>` : withPct === 'both' ? `<td class="n num">${pct(v, exp)}</td><td class="n num">${pct(v, rev)}</td>` : '<td></td><td></td>') + '</tr>';
@@ -1075,38 +1092,12 @@ function renderStatement() {
 
 const sumObj = (M, k) => Object.values(M).reduce((a, v) => a + (v[k] || 0), 0);
 function renderWholesale() {
-  const r = R, ws = r.ws, x = r.c.wholesale;
-  const wsRev = x.revMain + x.revBrand, wsGross = wsRev - x.cogsMain;
-  $('#wsKpis').innerHTML = [
-    ['إيراد الجملة', money(wsRev), `منها مبيعات للمتاجر <span class="num">${money(x.revBrand)}</span>`],
-    ['تكلفة البضاعة (استيراد)', money(x.cogsMain), `من إدارة`],
-    ['مجمل ربح الجملة', money(wsGross), `هامش <span class="num">${pct(wsGross, wsRev)}</span>`],
-    ['صافي ربح الجملة بعد المصروف', money(x.net), `هامش صافي <span class="num">${pct(x.net, x.revenue)}</span>`],
-  ].map(([l, v, sub]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${String(v).startsWith('−') ? 'neg' : ''}">${v}</div><div class="sub">${sub}</div></div>`).join('');
-
+  const r = R, ws = r.ws;
   stackedColumns($('#chartBrands'), BRANDS.map(b => {
     const B = ws.byBrand[b.id], g = B.rev - B.imp;
     return { label: b.name, values: { cost: B.imp, gp: Math.max(0, g) },
       tip: `<b>${b.name}</b>${tipRow('الكمية', fmt(B.qty))}${tipRow('إيراد الجملة', money(B.rev))}${tipRow('تكلفة الاستيراد', money(B.imp))}${tipRow('ربح الجملة', money(g), g < 0 ? 'neg' : '')}${tipRow('الهامش', pct(g, B.rev))}` };
   }), [{ key: 'cost', label: 'تكلفة الاستيراد', color: '--cost' }, { key: 'gp', label: 'ربح الجملة', color: '--s3' }], { label: 'براندات الجملة' });
-
-  const rows = [
-    ['مبيعات عملاء الجملة', x.revMain, 'indent'],
-    ['مبيعات البراندات للمتاجر بسعر الجملة', x.revBrand, 'indent'],
-    ...(x.otherRev ? [['إيرادات أخرى', x.otherRev, 'indent']] : []),
-    ...(x.mainRev ? [['حصة الرئيسي من الإيرادات', x.mainRev, 'indent']] : []),
-    ...(x.delivery ? [['إيراد توصيل وشحن', x.delivery, 'indent']] : []),
-    ['تكلفة البضاعة المباعة (استيراد)', -x.cogsMain, 'indent'],
-    ['مجمل الربح', x.revenue - x.cogs, 'sub'],
-    ['المصاريف الإدارية', -x.adminT, 'indent'],
-    ...(x.mainOp ? [['حصة الرئيسي (تشغيلية)', -x.mainOp, 'indent']] : []),
-    ...(x.fuelAlloc ? [['محروقات محمّلة', -x.fuelAlloc, 'indent']] : []),
-    ...(x.packAlloc ? [['تغليف محمّل', -x.packAlloc, 'indent']] : []),
-    ['مصاريف تشغيلية أخرى', -x.expenses, 'indent'],
-    ['صافي ربح الجملة', x.net, 'sum'],
-  ];
-  $('#wsPL').innerHTML = `<table><tbody>${rows.map(([l, v, c]) => `<tr class="${c}"><td>${esc(l)}</td><td class="n">${signed(v)}</td></tr>`).join('')}</tbody></table>`;
-  $('#wsNote').textContent = 'مبيعات عملاء الجملة من قائمة الدخل + ما اشترته المتاجر بسعر قائمة الجملة';
 
   const centers = CENTERS.filter(ce => ws.matrix[ce.id]);
   if (!centers.length) { $('#wsMatrix').innerHTML = '<div class="empty">ارفع تقارير المبيعات وجدول تكلفة الجملة من تبويب المدخلات</div>'; }
@@ -1365,17 +1356,30 @@ function openMonth(m) {
 function refresh() {
   compute();
   $('#demoBadge').hidden = !S.demo;
-  renderResults(); renderStatement(); renderDelivery(); renderWholesale(); renderInputs();
+  renderTabs(); renderResults(); if ($('#centerSel').value !== 'all') { stCenter = $('#centerSel').value; renderStatement(); } renderDelivery(); renderInputs();
   saveCurrentInputs();
 }
 
 /* ---------- wiring ---------- */
 loadStore();
-document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+// One store selector drives the whole results page: "all" shows the company summary,
+// a store shows that store's own page.
+function renderTabs() {
+  const sel = $('#centerSel');
+  if (sel.options.length) return;
+  sel.innerHTML = `<option value="all">كل المراكز (ملخص الشركة)</option>` + CENTERS.filter(c => !c.shared).map(ce => `<option value="${ce.id}">${ce.name}</option>`).join('');
+  try { const v = sessionStorage.getItem('cp-center'); if (v && sel.querySelector(`option[value="${v}"]`)) sel.value = v; } catch (e) {}
+  sel.onchange = () => { try { sessionStorage.setItem('cp-center', sel.value); } catch (e) {} showTab($('.tab[data-tab="results"]')); };
+  $('#tabs').querySelectorAll('.tab').forEach(t => t.onclick = () => showTab(t));
+}
+function showTab(t) {
   document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === t));
-  document.querySelectorAll('section.panel').forEach(p => p.hidden = p.id !== `tab-${t.dataset.tab}`);
+  const cid = $('#centerSel').value;
+  const panel = t.dataset.tab === 'results' && cid !== 'all' ? 'center' : t.dataset.tab;
+  document.querySelectorAll('section.panel').forEach(p => p.hidden = p.id !== `tab-${panel}`);
+  if (panel === 'center') { stCenter = cid; renderStatement(); }
   try { sessionStorage.setItem('cp-tab', t.dataset.tab); } catch (e) {}
-});
+}
 $('#month').onchange = () => { if ($('#month').value) openMonth($('#month').value); };
 $('#saveMonth').onclick = () => {
   if (!R.hasIS && !R.hasOrders && !R.hasSales) { toast('لا توجد مدخلات لهذا الشهر بعد'); return; }
@@ -1421,7 +1425,7 @@ const startMonth = store.lastMonth || curMonth();
 $('#month').value = startMonth;
 const hasAny = Object.keys(store.months).length || Object.keys(store.history).length;
 if (!hasAny) loadDemo(); else openMonth(startMonth);
-try { const t = sessionStorage.getItem('cp-tab'); if (t) document.querySelector(`.tab[data-tab="${t}"]`)?.click(); } catch (e) {}
+{ let t = 'results'; try { t = sessionStorage.getItem('cp-tab') || t; } catch (e) {} showTab(document.querySelector(`.tab[data-tab="${t}"]`) || $('.tab[data-tab="results"]')); }
 if (typeof XLSX === 'undefined') toast('تعذّر تحميل قارئ ملفات Excel، تحقق من الاتصال');
 })();
 </script>
