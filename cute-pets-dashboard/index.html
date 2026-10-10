@@ -295,6 +295,9 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <div class="field"><label for="setRiyadh">كلمات تحديد طلبات الرياض</label><input type="text" id="setRiyadh"></div>
           <div class="field"><label for="setDelivery">مصدر إيراد التوصيل</label>
             <select id="setDelivery"><option value="orders">تقرير الطلبات</option><option value="is">حساب التوصيل في قائمة الدخل</option></select></div>
+          <div class="field"><label for="setMainBasis">توزيع مصاريف الرئيسي على المتاجر</label>
+            <select id="setMainBasis"><option value="sales">بنسبة المبيعات</option><option value="orders">بعدد الطلبات</option><option value="equal">بالتساوي</option><option value="off">بدون توزيع (عمود مستقل)</option></select></div>
+          <div class="field"><label for="setMainKeep">حسابات تبقى على الرئيسي ولا تُوزَّع</label><input type="text" id="setMainKeep" placeholder="مثال: حكومي, قرض"></div>
           <div class="field"><label for="setWsMode">براندات الجملة المباعة في المتاجر</label>
             <select id="setWsMode"><option value="transfer">تكلفتها في المتجر بسعر قائمة الجملة</option><option value="off">بتكلفة الاستيراد من إدارة (بدون ربح للجملة)</option></select></div>
         </div>
@@ -420,7 +423,7 @@ function classify(account, group) {
 const SUBTOTAL = /(^|\s)(اجمالي|مجموع|صافي الربح|صافي الدخل|مجمل الربح|صافي الخساره|total|net income|gross profit)(\s|$)/;
 
 /* ---------- state ---------- */
-const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsMode: 'transfer', fuelManual: '', packManual: '' };
+const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsMode: 'transfer', mainBasis: 'sales', mainKeep: 'حكومي', fuelManual: '', packManual: '' };
 let store = { months: {}, history: {}, settings: { ...DEFAULT_SETTINGS }, lastMonth: null };
 let S = blankMonth();
 let raw = {};           // parsed sheets kept in memory for re-mapping: { is, orders, costs, sales:[...] }
@@ -600,7 +603,11 @@ function compute() {
   const set = store.settings;
   const c = {};
   for (const ce of CENTERS) c[ce.id] = { salesRev: 0, otherRev: 0, delIn: 0, delOut: 0, delInIS: 0, delOutIS: 0, cogsIS: 0, admin: 0, expenses: 0,
-    fuelOwn: 0, packOwn: 0, fuelAlloc: 0, packAlloc: 0, ordIn: 0, ordOut: 0, lines: [] };
+    fuelOwn: 0, packOwn: 0, fuelAlloc: 0, packAlloc: 0, ordIn: 0, ordOut: 0, lines: [],
+    kept: { rev: 0, admin: 0, op: 0 }, mainRev: 0, mainAdmin: 0, mainOp: 0, mainShare: 0 };
+  // Lines of the shared center that are NOT distributed to the stores (e.g. government fees).
+  const keepWords = String(set.mainKeep || '').split(/[,،]/).map(norm).filter(Boolean);
+  const isKept = acc => keepWords.some(k => norm(acc).includes(k));
 
   // Income statement: keep every account line so a center's statement can be printed in the report layout.
   // Amounts keep their sign (a negative expense is a reversal). If a file books revenue as negative
@@ -622,6 +629,12 @@ function compute() {
     else if (cat === 'pack') x.packOwn += a;
     else if (cat === 'admin') x.admin += a;
     else if (cat === 'expense') x.expenses += a;
+    if (r.center === 'main' && isKept(r.account)) {
+      if (['sales', 'other', 'delivery'].includes(cat)) x.kept.rev += a;
+      else if (cat === 'contra') x.kept.rev -= Math.abs(a);
+      else if (cat === 'admin') x.kept.admin += a;
+      else x.kept.op += a;
+    }
   }
 
   // Orders
@@ -702,23 +715,45 @@ function compute() {
       W.revBrand += wh; W.cogsMain += imp;                // wholesale sells to the store at the list price
     }
   }
-  for (const ce of CENTERS) {
-    const x = c[ce.id];
+  const finalize = x => {
     x.delivery = x.delIn + x.delOut;
-    x.revenue = x.revMain + x.revBrand + x.delivery + x.otherRev;
+    x.revenue = x.revMain + x.revBrand + x.delivery + x.otherRev + x.mainRev;
     x.cogs = x.cogsMain + x.cogsWs;
     x.gross = x.revenue - x.cogs;
-    x.opex = x.cogs + x.fuelAlloc + x.packAlloc + x.expenses;
-    x.totalExp = x.admin + x.opex;
+    x.adminT = x.admin + x.mainAdmin;
+    x.opex = x.cogs + x.fuelAlloc + x.packAlloc + x.expenses + x.mainOp;
+    x.totalExp = x.adminT + x.opex;
     x.net = x.revenue - x.totalExp;
+  };
+  CENTERS.forEach(ce => finalize(c[ce.id]));
+
+  // Distribute the shared "رئيسي" center to the stores, except the kept lines.
+  let mainAllocated = false;
+  const M = c.main;
+  if (set.mainBasis !== 'off' && (M.revenue || M.totalExp)) {
+    const recips = CENTERS.filter(ce => !ce.shared).map(ce => {
+      const x = c[ce.id];
+      const b = set.mainBasis === 'orders' ? x.ordIn + x.ordOut : set.mainBasis === 'equal' ? 1 : Math.max(0, x.salesRev);
+      return { x, b };
+    }).filter(o => o.b > 0);
+    const B = recips.reduce((a, o) => a + o.b, 0);
+    if (B) {
+      const pool = { rev: M.revenue - M.kept.rev, admin: M.adminT - M.kept.admin, op: M.opex - M.kept.op };
+      for (const { x, b } of recips) { x.mainShare = b / B; x.mainRev = pool.rev * x.mainShare; x.mainAdmin = pool.admin * x.mainShare; x.mainOp = pool.op * x.mainShare; }
+      // the shared center keeps only the excluded lines
+      Object.assign(M, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: M.kept.rev, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, packAlloc: 0,
+        admin: M.kept.admin, expenses: M.kept.op, lines: M.lines.filter(l => isKept(l.account)) });
+      mainAllocated = true;
+      CENTERS.forEach(ce => finalize(c[ce.id]));
+    }
   }
-  R = { c, ws, cats, mode, xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, cats, mode, mainAllocated, xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
 function summary(r) {
   const out = {};
-  for (const ce of CENTERS) { const x = r.c[ce.id]; out[ce.id] = { revenue: x.revenue, gross: x.gross, net: x.net, delivery: x.delivery, admin: x.admin, opex: x.opex, exp: x.totalExp, cats: r.cats[ce.id] || {} }; }
+  for (const ce of CENTERS) { const x = r.c[ce.id]; out[ce.id] = { revenue: x.revenue, gross: x.gross, net: x.net, delivery: x.delivery, admin: x.adminT, opex: x.opex, exp: x.totalExp, cats: r.cats[ce.id] || {} }; }
   return out;
 }
 
@@ -876,7 +911,7 @@ function renderResults() {
   };
   $('#kpis').innerHTML = [
     ['إجمالي الإيرادات', rev, 'revenue', `منها توصيل وشحن <span class="num">${money(del)}</span>`],
-    ['المصاريف الإدارية', sum('admin'), 'admin', `<span class="num">${pct(sum('admin'), rev)}</span> من الإيرادات`],
+    ['المصاريف الإدارية', sum('adminT'), 'admin', `<span class="num">${pct(sum('adminT'), rev)}</span> من الإيرادات`],
     ['المصاريف التشغيلية', sum('opex'), 'opex', `منها تكلفة البضاعة <span class="num">${money(sum('cogs'))}</span>`],
     ['صافي الربح / الخسارة', net, 'net', `هامش صافي <span class="num">${pct(net, rev)}</span>`],
   ].map(([l, v, k, sub]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${v < 0 ? 'neg' : ''}">${money(v)}</div><div class="sub">${sub}</div>${delta(v, k)}</div>`).join('');
@@ -900,14 +935,17 @@ function renderResults() {
     ['خدمات الشحن الخارجي', 'delOut', 'indent'],
     ['إيراد التوصيل داخل الرياض', 'delIn', 'indent'],
     ['إيرادات أخرى', 'otherRev', 'indent'],
+    ...(r.mainAllocated ? [['حصة الرئيسي من الإيرادات', 'mainRev', 'indent']] : []),
     ['إجمالي الإيرادات', 'revenue', 'sub'],
     ['ثانياً: المصروفات', null, 'head'],
-    ['المصاريف الإدارية', 'admin', 'sub', -1],
+    ...(r.mainAllocated ? [['المصاريف الإدارية للمركز', 'admin', 'indent', -1], ['حصة الرئيسي (إدارية)', 'mainAdmin', 'indent', -1]] : []),
+    ['المصاريف الإدارية', 'adminT', 'sub', -1],
     ['تكلفة البضاعة المباعة', 'cogsMain', 'indent', -1],
     ['تكلفة بضاعة الجملة', 'cogsWs', 'indent', -1],
     ['محروقات (بعدد طلبات الرياض)', 'fuelAlloc', 'indent', -1],
     ['مستلزمات التغليف (بعدد الطلبات)', 'packAlloc', 'indent', -1],
     ['مصاريف تشغيلية أخرى', 'expenses', 'indent', -1],
+    ...(r.mainAllocated ? [['حصة الرئيسي (تشغيلية)', 'mainOp', 'indent', -1]] : []),
     ['المصاريف التشغيلية', 'opex', 'sub', -1],
     ['إجمالي المصروفات', 'totalExp', 'sub', -1],
     ['صافي الربح / الخسارة', 'net', 'sum'],
@@ -925,6 +963,7 @@ function renderResults() {
   $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
   const notes = [];
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
+  if (r.mainAllocated) notes.push(`مصاريف الرئيسي موزعة ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}${store.settings.mainKeep ? ` ما عدا: ${store.settings.mainKeep}` : ''}`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
   $('#plNote').textContent = notes.join(' · ');
 }
@@ -992,17 +1031,20 @@ function renderStatement() {
   t += row('خدمات الشحن الخارجي', x.delOut, 'indent', 'rev');
   t += row('إيراد التوصيل داخل الرياض', x.delIn, 'indent', 'rev');
   for (const [a, v] of lines('other')) t += row(a, v, 'indent', 'rev');
+  if (x.mainRev) t += row(`حصة الرئيسي من الإيرادات (${fmt(x.mainShare * 100, 1)}%)`, x.mainRev, 'indent', 'rev');
   if (Math.abs(x.svcDiff) >= 0.5) t += row(x.ordIn + x.ordOut ? 'ايراد الخدمات: الفرق عن تقرير الطلبات' : 'ايراد الخدمات', x.svcDiff, 'indent', 'rev');
   t += row('إجمالي الإيرادات', rev, 'sub', 'rev');
   t += `<tr class="sec"><td colspan="4">ثانياً: المصروفات</td></tr>`;
-  t += row('المصاريف الإدارية', x.admin, 'sub');
+  t += row('المصاريف الإدارية', x.adminT, 'sub');
   for (const [a, v] of lines('admin')) t += row(a, v);
+  if (x.mainAdmin) t += row(`حصة الرئيسي من المصاريف الإدارية (${fmt(x.mainShare * 100, 1)}%)`, x.mainAdmin);
   t += row('المصاريف التشغيلية', x.opex, 'sub');
   t += row('تكلفة البضاعة المباعة', x.cogsMain);
   t += row('تكلفة بضاعة الجملة', x.cogsWs);
   for (const [a, v] of lines('expense')) t += row(a, v);
   t += row('محروقات (بعدد طلبات الرياض)', x.fuelAlloc);
   t += row('مستلزمات التغليف (بعدد الطلبات)', x.packAlloc);
+  if (x.mainOp) t += row(`حصة الرئيسي من المصاريف التشغيلية (${fmt(x.mainShare * 100, 1)}%)`, x.mainOp);
   t += row('إجمالي المصروفات', exp, 'sub');
   t += row('صافي الربح / الخسارة', x.net, 'sum', 'rev');
   t += '</tbody></table>';
@@ -1011,8 +1053,8 @@ function renderStatement() {
   $('#stSummary').innerHTML = `<table><tbody>
     ${row('إيرادات المبيعات بدون بضاعة الجملة', x.revMain, '', 'none')}${row('إيرادات مبيعات الجملة', x.revBrand, '', 'none')}
     ${row('خدمات الشحن الخارجي', x.delOut, '', 'none')}${row('إيراد التوصيل داخل الرياض', x.delIn, '', 'none')}
-    ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}
-    ${row('إجمالي الإيرادات', rev, 'sub', 'none')}${row('المصاريف الإدارية', x.admin, '', 'none')}${row('المصاريف التشغيلية', x.opex, '', 'none')}
+    ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}${x.mainRev ? row('حصة الرئيسي من الإيرادات', x.mainRev, '', 'none') : ''}
+    ${row('إجمالي الإيرادات', rev, 'sub', 'none')}${row('المصاريف الإدارية', x.adminT, '', 'none')}${row('المصاريف التشغيلية', x.opex, '', 'none')}
     ${row('إجمالي المصروفات', exp, 'sub', 'none')}${row('صافي الربح / الخسارة', x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
 
   // Sales by category: the current month next to the last saved months
@@ -1052,10 +1094,12 @@ function renderWholesale() {
     ['مبيعات عملاء الجملة', x.revMain, 'indent'],
     ['مبيعات البراندات للمتاجر بسعر الجملة', x.revBrand, 'indent'],
     ...(x.otherRev ? [['إيرادات أخرى', x.otherRev, 'indent']] : []),
+    ...(x.mainRev ? [['حصة الرئيسي من الإيرادات', x.mainRev, 'indent']] : []),
     ...(x.delivery ? [['إيراد توصيل وشحن', x.delivery, 'indent']] : []),
     ['تكلفة البضاعة المباعة (استيراد)', -x.cogsMain, 'indent'],
     ['مجمل الربح', x.revenue - x.cogs, 'sub'],
-    ['المصاريف الإدارية', -x.admin, 'indent'],
+    ['المصاريف الإدارية', -x.adminT, 'indent'],
+    ...(x.mainOp ? [['حصة الرئيسي (تشغيلية)', -x.mainOp, 'indent']] : []),
     ...(x.fuelAlloc ? [['محروقات محمّلة', -x.fuelAlloc, 'indent']] : []),
     ...(x.packAlloc ? [['تغليف محمّل', -x.packAlloc, 'indent']] : []),
     ['مصاريف تشغيلية أخرى', -x.expenses, 'indent'],
@@ -1345,6 +1389,8 @@ const bindSetting = (id, key, evt = 'change') => { const el = $(id); el.value = 
 bindSetting('#setRiyadh', 'riyadh');
 bindSetting('#setDelivery', 'deliverySource');
 bindSetting('#setWsMode', 'wsMode');
+bindSetting('#setMainBasis', 'mainBasis');
+bindSetting('#setMainKeep', 'mainKeep');
 bindSetting('#fuelManual', 'fuelManual', 'input');
 bindSetting('#packManual', 'packManual', 'input');
 
