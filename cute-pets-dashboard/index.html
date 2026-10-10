@@ -191,7 +191,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         <div class="table-wrap" id="plTable"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>التوصيل ونسب التحمل</h2><p>المحروقات بعدد طلبات داخل الرياض، والتغليف بعدد كل الطلبات</p></div>
+        <div class="card-head"><h2>التوصيل ونسب التحمل</h2><p>المحروقات بعدد طلبات داخل الرياض، والتغليف بعدد كل الطلبات، على المتاجر الإلكترونية فقط (المعرض لا يتحمل)</p></div>
         <div class="table-wrap" id="delTable"></div>
       </div>
     </section>
@@ -324,9 +324,9 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
 /* ---------- constants ---------- */
 const CENTERS = [
   { id: 'exhibit',   name: 'معرض كيوت بيتس', short: 'المعرض',     color: '--s1' },
-  { id: 'cpstore',   name: 'متجر كيوت بيتس', short: 'كيوت بيتس',  color: '--s2' },
-  { id: 'hamtaro',   name: 'متجر هامتارو',   short: 'هامتارو',    color: '--s3' },
-  { id: 'wagy',      name: 'متجر واجي',      short: 'واجي',       color: '--s4' },
+  { id: 'cpstore',   name: 'متجر كيوت بيتس', short: 'كيوت بيتس',  color: '--s2', delivery: true },
+  { id: 'hamtaro',   name: 'متجر هامتارو',   short: 'هامتارو',    color: '--s3', delivery: true },
+  { id: 'wagy',      name: 'متجر واجي',      short: 'واجي',       color: '--s4', delivery: true },
   { id: 'wholesale', name: 'الجملة',         short: 'الجملة',     color: '--s5' },
   { id: 'main',      name: 'الرئيسي (مشترك)', short: 'الرئيسي',   color: '--s6', shared: true },
 ];
@@ -657,16 +657,24 @@ function compute() {
   }
   for (const ce of CENTERS) { const x = c[ce.id]; x.ordAll = x.ordIn + x.ordOut + x.ordPick; }
   const hasOrders = orderFiles.some(f => f.rows.length);
-  const totIn = CENTERS.reduce((s, ce) => s + c[ce.id].ordIn, 0);
-  const totAll = CENTERS.reduce((s, ce) => s + c[ce.id].ordAll, 0);
+  // Fuel and packaging are borne only by the online stores (never the exhibit or wholesale).
+  const DC = CENTERS.filter(ce => ce.delivery);
+  const totIn = DC.reduce((s, ce) => s + c[ce.id].ordIn, 0);
+  const totAll = DC.reduce((s, ce) => s + c[ce.id].ordAll, 0);
+  const salesDC = DC.reduce((s, ce) => s + Math.max(0, c[ce.id].salesRev), 0);
   const fuelIS = CENTERS.reduce((s, ce) => s + c[ce.id].fuelOwn, 0);
   const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0);
   const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : fuelIS;
   const packTotal = set.packManual !== '' && set.packManual != null ? +set.packManual : packIS;
   for (const ce of CENTERS) {
     const x = c[ce.id];
-    if (hasOrders && totIn) x.fuelAlloc = fuelTotal * x.ordIn / totIn; else if (!hasOrders) x.fuelAlloc = x.fuelOwn;
-    if (hasOrders && totAll) x.packAlloc = packTotal * x.ordAll / totAll; else if (!hasOrders) x.packAlloc = x.packOwn;
+    x.fuelAlloc = 0; x.packAlloc = 0;
+    if (ce.delivery) {
+      // by orders when the orders report is in; otherwise by sales share among the online stores
+      const sShare = salesDC ? Math.max(0, x.salesRev) / salesDC : 0;
+      x.fuelAlloc = fuelTotal * (hasOrders && totIn ? x.ordIn / totIn : sShare);
+      x.packAlloc = packTotal * (hasOrders && totAll ? x.ordAll / totAll : sShare);
+    }
     x.svcDiff = 0;
     if (!(hasOrders && set.deliverySource === 'orders')) { x.delIn = x.delInIS; x.delOut = x.delOutIS; }
     else { x.svcDiff = x.delInIS + x.delOutIS - x.delIn - x.delOut; x.otherRev += x.svcDiff; }
