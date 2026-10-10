@@ -250,7 +250,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         </div>
         <div class="card up" id="up-sales">
           <h3>٣. تقارير المبيعات لكل متجر</h3>
-          <ul><li>ملف لكل متجر: كود الصنف، اسم الصنف، البراند، الكمية، صافي المبيعات</li><li>يمكن رفع أكثر من ملف</li></ul>
+          <ul><li>ملف لكل متجر: كود الصنف، اسم الصنف، البراند، الكمية، التكلفة، صافي المبيعات</li><li>يمكن رفع أكثر من ملف</li></ul>
           <div class="field"><label for="salesCenter">المتجر</label><select id="salesCenter"></select></div>
           <label class="drop" for="file-sales">اسحب الملف هنا أو اضغط للاختيار</label>
           <input type="file" id="file-sales" accept=".xlsx,.xls,.csv" multiple hidden>
@@ -435,6 +435,7 @@ const FIELDS = {
     ['name', 'اسم الصنف *', ['اسم الصنف', 'الصنف', 'المنتج', 'الوصف', 'item', 'product', 'name']],
     ['brand', 'البراند', ['البراند', 'الماركه', 'العلامه التجاريه', 'العلامه', 'brand']],
     ['qty', 'الكمية *', ['الكميه المباعه', 'الكميه', 'كميه', 'العدد', 'qty', 'quantity']],
+    ['bookCost', 'التكلفة في إدارة', ['تكلفه المبيعات', 'اجمالي التكلفه', 'قيمه التكلفه', 'تكلفه البضاعه', 'تكلفه الوحده', 'التكلفه', 'تكلفه', 'cost']],
     ['sales', 'صافي المبيعات *', ['صافي المبيعات', 'قيمه المبيعات', 'اجمالي المبيعات', 'المبيعات', 'الصافي', 'الاجمالي', 'القيمه', 'net', 'total', 'amount']],
   ],
   costs: [
@@ -519,6 +520,8 @@ function parseTable(kind, aoa, mapOverride) {
   const h = mapOverride ? mapOverride.header : findHeaderRow(aoa, scoreFor(fields));
   const map = mapOverride || { header: h, ...autoMap(aoa[h] || [], fields) };
   const get = (r, k) => map[k] >= 0 ? r[map[k]] : '';
+  // A per-unit cost column (تكلفة الوحدة / سعر التكلفة) is multiplied by quantity.
+  const unitBook = map.bookCost >= 0 && /وحده|سعر|unit/.test(norm((aoa[map.header] || [])[map.bookCost]));
   const rows = [];
   for (const r of aoa.slice(map.header + 1)) {
     if (!r.some(c => String(c).trim())) continue;
@@ -528,7 +531,8 @@ function parseTable(kind, aoa, mapOverride) {
     } else if (kind === 'sales') {
       const name = String(get(r, 'name')).trim();
       if (!name || SUBTOTAL.test(norm(name))) continue;
-      rows.push({ store: String(get(r, 'store')), code: String(get(r, 'code')).trim(), name, brand: String(get(r, 'brand')), qty: toNum(get(r, 'qty')), sales: toNum(get(r, 'sales')) });
+      rows.push({ store: String(get(r, 'store')), code: String(get(r, 'code')).trim(), name, brand: String(get(r, 'brand')), qty: toNum(get(r, 'qty')), sales: toNum(get(r, 'sales')),
+        bookCost: map.bookCost >= 0 ? toNum(get(r, 'bookCost')) * (unitBook ? toNum(get(r, 'qty')) : 1) : null });
     } else if (kind === 'costs') {
       const cost = toNum(get(r, 'cost'));
       if (!cost) continue;
@@ -603,8 +607,11 @@ function compute() {
       if (unit == null) { const k = `${r.code}|${r.name}`; ws.unmatched[k] = ws.unmatched[k] || { code: r.code, name: r.name, brand: bid, qty: 0, sales: 0 }; ws.unmatched[k].qty += r.qty; ws.unmatched[k].sales += r.sales; }
       const B = ws.byBrand[bid]; B.qty += r.qty; B.sales += r.sales; B.cost += cost;
       ws.matrix[center] = ws.matrix[center] || {};
-      const M = ws.matrix[center][bid] = ws.matrix[center][bid] || { qty: 0, sales: 0, cost: 0 };
+      const M = ws.matrix[center][bid] = ws.matrix[center][bid] || { qty: 0, sales: 0, cost: 0, book: 0, bookMissing: 0 };
       M.qty += r.qty; M.sales += r.sales; M.cost += cost;
+      // The store carries these items at its own cost price (not the import cost): use the cost
+      // recorded in its sales report; fall back to the wholesale table only when the report has none.
+      if (r.bookCost != null) M.book += r.bookCost; else { M.book += cost; M.bookMissing++; }
       ws.sales += r.sales; ws.cost += cost; ws.qty += r.qty;
     }
   }
@@ -622,7 +629,8 @@ function compute() {
       // so the company total counts them once.
       const M = Object.values(ws.matrix[ce.id]);
       x.xferRev = -M.reduce((a, v) => a + v.sales, 0);
-      x.xferCost = -Math.min(x.cogsIS, M.reduce((a, v) => a + v.cost, 0));
+      x.xferCost = -Math.min(x.cogsIS, M.reduce((a, v) => a + v.book, 0));
+      x.bookFallback = M.some(v => v.bookMissing);
     }
     x.cogs = x.cogsBase + x.xferCost;
     x.delivery = x.delIn + x.delOut;
@@ -631,7 +639,7 @@ function compute() {
     x.totalExp = x.expenses + x.fuelAlloc + x.packAlloc;
     x.net = x.gross - x.totalExp;
   }
-  R = { c, ws, xfer: CENTERS.some(ce => c[ce.id].xferRev), hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, xfer: CENTERS.some(ce => c[ce.id].xferRev), bookFallback: CENTERS.filter(ce => c[ce.id].bookFallback), hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -819,7 +827,7 @@ function renderResults() {
     ['إيراد التوصيل خارج الرياض', 'delOut', 'indent'],
     ['إجمالي الإيرادات', 'revenue', 'sub'],
     ['تكلفة البضاعة المباعة', 'cogsBase', 'indent', -1],
-    ...(r.xfer ? [['يُخصم: تكلفة براندات الجملة', 'xferCost', 'indent', -1]] : []),
+    ...(r.xfer ? [['يُخصم: تكلفة براندات الجملة (بتكلفة المتجر في إدارة)', 'xferCost', 'indent', -1]] : []),
     ['مجمل الربح', 'gross', 'sub'],
     ['المصروفات التشغيلية المباشرة', 'expenses', 'indent', -1],
     ['محروقات محمّلة (طلبات الرياض)', 'fuelAlloc', 'indent', -1],
@@ -839,6 +847,7 @@ function renderResults() {
   const notes = [];
   if (r.hasSales && store.settings.wsRevenue === 'sales') notes.push(r.xfer ? 'مبيعات البراندات في المتاجر محوّلة للجملة' : 'إيراد الجملة = مبيعات البراندات في تقارير المتاجر');
   if (r.hasSales && store.settings.wsCost === 'calc') notes.push('تكلفة الجملة محسوبة من جدول التكلفة');
+  if (r.bookFallback.length) notes.push(`لا يوجد عمود تكلفة في تقرير مبيعات ${r.bookFallback.map(ce => ce.short).join('، ')}، فخُصمت التكلفة بسعر جدول الجملة`);
   $('#plNote').textContent = notes.join(' · ');
 }
 
@@ -909,12 +918,14 @@ function renderWholesale() {
   const centers = CENTERS.filter(ce => ws.matrix[ce.id]);
   if (!centers.length) { $('#wsMatrix').innerHTML = '<div class="empty">ارفع تقارير المبيعات وجدول تكلفة الجملة من تبويب المدخلات</div>'; }
   else {
-    let t = `<table><thead><tr><th>المتجر</th>${BRANDS.map(b => `<th class="n">${b.name}: الكمية</th><th class="n">${b.name}: التكلفة</th>`).join('')}<th class="n">إجمالي المبيعات</th><th class="n">إجمالي التكلفة</th><th class="n">مجمل الربح</th></tr></thead><tbody>`;
+    let t = `<table><thead><tr><th>المتجر</th>${BRANDS.map(b => `<th class="n">${b.name}: الكمية</th><th class="n">${b.name}: التكلفة</th>`).join('')}<th class="n">إجمالي المبيعات</th><th class="n">تكلفة الجملة</th><th class="n">مجمل الربح</th><th class="n">التكلفة في المتجر (إدارة)</th></tr></thead><tbody>`;
+    let bookTot = 0;
     for (const ce of centers) {
-      const M = ws.matrix[ce.id]; let s = 0, c = 0;
-      t += `<tr><td>${ce.name}</td>${BRANDS.map(b => { const v = M[b.id] || { qty: 0, cost: 0, sales: 0 }; s += v.sales; c += v.cost; return `<td class="n">${fmt(v.qty)}</td><td class="n">${money(v.cost)}</td>`; }).join('')}<td class="n">${money(s)}</td><td class="n">${money(c)}</td><td class="n">${signed(s - c)}</td></tr>`;
+      const M = ws.matrix[ce.id]; let s = 0, c = 0, bk = 0;
+      t += `<tr><td>${ce.name}</td>${BRANDS.map(b => { const v = M[b.id] || { qty: 0, cost: 0, sales: 0, book: 0 }; s += v.sales; c += v.cost; bk += v.book; return `<td class="n">${fmt(v.qty)}</td><td class="n">${money(v.cost)}</td>`; }).join('')}<td class="n">${money(s)}</td><td class="n">${money(c)}</td><td class="n">${signed(s - c)}</td><td class="n">${ce.id === 'wholesale' ? '—' : money(bk)}</td></tr>`;
+      if (ce.id !== 'wholesale') bookTot += bk;
     }
-    t += `<tr class="sum"><td>الإجمالي</td>${BRANDS.map(b => `<td class="n">${fmt(ws.byBrand[b.id].qty)}</td><td class="n">${money(ws.byBrand[b.id].cost)}</td>`).join('')}<td class="n">${money(ws.sales)}</td><td class="n">${money(ws.cost)}</td><td class="n">${signed(gp)}</td></tr></tbody></table>`;
+    t += `<tr class="sum"><td>الإجمالي</td>${BRANDS.map(b => `<td class="n">${fmt(ws.byBrand[b.id].qty)}</td><td class="n">${money(ws.byBrand[b.id].cost)}</td>`).join('')}<td class="n">${money(ws.sales)}</td><td class="n">${money(ws.cost)}</td><td class="n">${signed(gp)}</td><td class="n">${money(bookTot)}</td></tr></tbody></table>`;
     $('#wsMatrix').innerHTML = t;
   }
   const un = Object.values(ws.unmatched);
@@ -1060,12 +1071,13 @@ function demoMonth(monthKey, k = 1) {
   const salesFiles = [];
   const salesPlan = { exhibit: 1.3, cpstore: 1, hamtaro: 0.7, wagy: 0.5, wholesale: 2.6 };
   for (const [cid, f] of Object.entries(salesPlan)) {
-    const s = [['كود الصنف', 'اسم الصنف', 'البراند', 'الكمية', 'صافي المبيعات']];
+    const s = [['كود الصنف', 'اسم الصنف', 'البراند', 'الكمية', 'التكلفة', 'صافي المبيعات']];
     for (const it of items) {
       if (cid === 'wholesale' && !it[2]) continue;
       const q = Math.round((20 + rnd() * 90) * f * k);
       const price = cid === 'wholesale' ? it[4] * 0.72 : it[4];
-      s.push([it[0], it[1], it[2], q, Math.round(q * price)]);
+      // stores carry brand items at a transfer cost above the import cost
+      s.push([it[0], it[1], it[2], q, Math.round(q * it[3] * (cid === 'wholesale' ? 1 : 1.15)), Math.round(q * price)]);
     }
     salesFiles.push({ center: cid, aoa: s, name: `مبيعات ${CMAP[cid].name}.xlsx` });
   }
