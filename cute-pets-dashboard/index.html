@@ -24,7 +24,7 @@
   --bad-ink: #b42828;
   --warn-bg: #fff3d6;
   --warn-ink: #7a5300;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
   --cost: #b9c0bb;
   --font-display: "Readex Pro", "IBM Plex Sans Arabic", system-ui, sans-serif;
   --font-body: "IBM Plex Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
@@ -35,7 +35,7 @@
     --bg: #0f1312; --surface: #171c1a; --surface-2: #1f2623; --ink: #eef2ef; --ink-2: #bfc8c3;
     --muted: #8a948f; --line: #2a3330; --axis: #3a4440; --accent: #3fb59d; --accent-ink: #06201a;
     --accent-soft: #163a32; --good-ink: #2fbf4f; --bad-ink: #f07171; --warn-bg: #3a2e10; --warn-ink: #f5c75a;
-    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --cost: #4a524e;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --cost: #4a524e;
     color-scheme: dark;
   }
 }
@@ -43,7 +43,7 @@
   --bg: #0f1312; --surface: #171c1a; --surface-2: #1f2623; --ink: #eef2ef; --ink-2: #bfc8c3;
   --muted: #8a948f; --line: #2a3330; --axis: #3a4440; --accent: #3fb59d; --accent-ink: #06201a;
   --accent-soft: #163a32; --good-ink: #2fbf4f; --bad-ink: #f07171; --warn-bg: #3a2e10; --warn-ink: #f5c75a;
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --cost: #4a524e;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --cost: #4a524e;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -332,6 +332,7 @@ const CENTERS = [
   { id: 'hamtaro',   name: 'متجر هامتارو',   short: 'هامتارو',    color: '--s3' },
   { id: 'wagy',      name: 'متجر واجي',      short: 'واجي',       color: '--s4' },
   { id: 'wholesale', name: 'الجملة',         short: 'الجملة',     color: '--s5' },
+  { id: 'main',      name: 'الرئيسي (مشترك)', short: 'الرئيسي',   color: '--s6', shared: true },
 ];
 const CMAP = Object.fromEntries(CENTERS.map(c => [c.id, c]));
 const BRANDS = [
@@ -387,6 +388,7 @@ function matchCenter(text) {
   if (t.includes('واجي') || t.includes('wagy') || t.includes('waggy') || t.includes('wagi')) return 'wagy';
   if (t.includes('جمله') || t.includes('wholesale')) return 'wholesale';
   if (t.includes('كيوت') || t.includes('cute')) return 'cpstore';
+  if (/(^|\s)(رئيسي|الرئيسي|رئيسى|main|hq)(\s|$)/.test(t)) return 'main';
   return null;
 }
 function matchBrand(text) {
@@ -395,16 +397,20 @@ function matchBrand(text) {
   for (const b of BRANDS) if (b.keys.some(k => t.includes(norm(k)))) return b.id;
   return null;
 }
-function classify(account) {
+function classify(account, group) {
   const t = norm(account);
   const has = (...ws) => ws.some(w => t.includes(norm(w)));
   if (has('محروقات', 'وقود', 'بنزين', 'ديزل', 'fuel')) return 'fuel';
   if (has('تغليف', 'تعبئه', 'اكياس', 'كراتين', 'packaging')) return 'pack';
   if (has('تكلفه', 'تكلفة') && has('جمله')) return 'wscost';
   if (has('تكلفه') && has('بضاعه', 'مبيعات', 'مباعه')) return 'cogs';
+  if (has('تسويه المخزون', 'تسوية المخزون')) return 'cogs';
   if (has('مردود')) return 'contra';
+  if (group === 'admin') return 'admin';
+  if (group === 'op') return 'expense';
+  if (group === 'other') return has('خدمات', 'توصيل', 'شحن') ? 'delivery' : 'other';
   const isCost = has('مصاريف', 'مصروف', 'عموله', 'عمولات', 'تكلفه');
-  if (!isCost && has('ايراد', 'ايرادات', 'خدمات') && has('توصيل', 'شحن', 'delivery')) return 'delivery';
+  if (!isCost && has('ايراد', 'ايرادات', 'خدمات') && has('توصيل', 'شحن', 'الخدمات', 'delivery')) return 'delivery';
   if (!isCost && has('مبيعات', 'sales')) return 'sales';
   if (!isCost && has('ايراد', 'ايرادات', 'revenue')) return 'other';
   if (has('رواتب', 'اجور', 'تامينات', 'تامين طبي', 'التامين الطبي', 'ايجار', 'حكومي', 'اقامه', 'كارت العمل', 'برنامج', 'ترخيص',
@@ -527,10 +533,27 @@ function parseIS(aoa, mapOverride) {
       cols: head.map(c => matchCenter(c) || ''),
     };
     if (map.account < 0) map.account = 0;
+    // Edara exports "02:قائمة الدخل", "020102:مصروفات التشغيل", ... as group rows and
+    // "05010001:تكلفة البضاعة المباعة" as accounts. Group rows carry the statement's root code.
+    let root = null, group = null;
     for (const r of aoa.slice(map.header + 1)) {
-      const acc = String(r[map.account] ?? '').trim();
-      if (!acc || SUBTOTAL.test(norm(acc))) continue;
-      map.cols.forEach((cid, i) => { if (cid && i !== map.account) { const v = toNum(r[i]); if (v) rows.push({ account: acc, center: cid, amount: v }); } });
+      let acc = String(r[map.account] ?? '').trim();
+      if (!acc) continue;
+      const m = acc.match(/^(\d+)\s*[:：]\s*(.*)$/);
+      if (m) {
+        if (root == null) root = m[1];
+        acc = m[2].trim();
+        if (m[1].startsWith(root)) {
+          const g = norm(acc);
+          if (/اداري|عموميه/.test(g)) group = 'admin';
+          else if (/تشغيل/.test(g)) group = 'op';
+          else if (/ايرادات اخر|ايراد اخر/.test(g)) group = 'other';
+          else if (/ايراد|مبيعات/.test(g)) group = 'rev';
+          continue;
+        }
+      }
+      if (SUBTOTAL.test(norm(acc))) continue;
+      map.cols.forEach((cid, i) => { if (cid && i !== map.account) { const v = toNum(r[i]); if (v) rows.push({ account: acc, center: cid, amount: v, group }); } });
     }
   } else {
     map = mapOverride?.mode === 'long' ? mapOverride : { mode, header: hLong, ...longMap };
@@ -580,13 +603,18 @@ function compute() {
     fuelOwn: 0, packOwn: 0, fuelAlloc: 0, packAlloc: 0, ordIn: 0, ordOut: 0, lines: [] };
 
   // Income statement: keep every account line so a center's statement can be printed in the report layout.
-  for (const r of S.is?.rows || []) {
-    const cat = S.cls[r.account] || classify(r.account);
-    const a = Math.abs(r.amount), x = c[r.center];
+  // Amounts keep their sign (a negative expense is a reversal). If a file books revenue as negative
+  // (credit-negative convention), the whole file is flipped once.
+  const isRows = S.is?.rows || [];
+  const revSum = isRows.filter(r => ['sales', 'other', 'delivery'].includes(S.cls[r.account] || classify(r.account, r.group))).reduce((a, r) => a + r.amount, 0);
+  const flip = revSum < 0 ? -1 : 1;
+  for (const r of isRows) {
+    const cat = S.cls[r.account] || classify(r.account, r.group);
+    const a = r.amount * flip, x = c[r.center];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
-    x.lines.push({ account: r.account, cat, amount: a });
+    x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a });
     if (cat === 'sales') x.salesRev += a;
-    else if (cat === 'contra') x.salesRev -= a;
+    else if (cat === 'contra') x.salesRev -= Math.abs(a);
     else if (cat === 'delivery') { if (/خارج|شحن/.test(norm(r.account)) && !/داخل/.test(norm(r.account))) x.delOutIS += a; else x.delInIS += a; }
     else if (cat === 'other') x.otherRev += a;
     else if (cat === 'cogs') x.cogsIS += a;
@@ -618,7 +646,9 @@ function compute() {
     const x = c[ce.id];
     if (hasOrders && totIn) x.fuelAlloc = fuelTotal * x.ordIn / totIn; else if (!hasOrders) x.fuelAlloc = x.fuelOwn;
     if (hasOrders && totAll) x.packAlloc = packTotal * (x.ordIn + x.ordOut) / totAll; else if (!hasOrders) x.packAlloc = x.packOwn;
+    x.svcDiff = 0;
     if (!(hasOrders && set.deliverySource === 'orders')) { x.delIn = x.delInIS; x.delOut = x.delOutIS; }
+    else { x.svcDiff = x.delInIS + x.delOutIS - x.delIn - x.delOut; x.otherRev += x.svcDiff; }
   }
 
   // Wholesale brands.
@@ -962,6 +992,7 @@ function renderStatement() {
   t += row('خدمات الشحن الخارجي', x.delOut, 'indent', 'rev');
   t += row('إيراد التوصيل داخل الرياض', x.delIn, 'indent', 'rev');
   for (const [a, v] of lines('other')) t += row(a, v, 'indent', 'rev');
+  if (Math.abs(x.svcDiff) >= 0.5) t += row(x.ordIn + x.ordOut ? 'ايراد الخدمات: الفرق عن تقرير الطلبات' : 'ايراد الخدمات', x.svcDiff, 'indent', 'rev');
   t += row('إجمالي الإيرادات', rev, 'sub', 'rev');
   t += `<tr class="sec"><td colspan="4">ثانياً: المصروفات</td></tr>`;
   t += row('المصاريف الإدارية', x.admin, 'sub');
@@ -980,7 +1011,7 @@ function renderStatement() {
   $('#stSummary').innerHTML = `<table><tbody>
     ${row('إيرادات المبيعات بدون بضاعة الجملة', x.revMain, '', 'none')}${row('إيرادات مبيعات الجملة', x.revBrand, '', 'none')}
     ${row('خدمات الشحن الخارجي', x.delOut, '', 'none')}${row('إيراد التوصيل داخل الرياض', x.delIn, '', 'none')}
-    ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}
+    ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}
     ${row('إجمالي الإيرادات', rev, 'sub', 'none')}${row('المصاريف الإدارية', x.admin, '', 'none')}${row('المصاريف التشغيلية', x.opex, '', 'none')}
     ${row('إجمالي المصروفات', exp, 'sub', 'none')}${row('صافي الربح / الخسارة', x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
 
@@ -1062,10 +1093,11 @@ function renderInputs() {
   $('#up-sales .status').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.sales.splice(+b.dataset.rm, 1); raw.sales?.splice(+b.dataset.rm, 1); refresh(); });
 
   // classification table
-  const accts = {};
-  for (const r of S.is?.rows || []) { accts[r.account] = accts[r.account] || {}; accts[r.account][r.center] = (accts[r.account][r.center] || 0) + r.amount; }
+  const accts = {}, groups = {};
+  for (const r of S.is?.rows || []) {
+    groups[r.account] = r.group; accts[r.account] = accts[r.account] || {}; accts[r.account][r.center] = (accts[r.account][r.center] || 0) + r.amount; }
   const names = Object.keys(accts);
-  $('#clsTable').innerHTML = names.length ? `<table><thead><tr><th>الحساب</th><th>التصنيف</th>${CENTERS.map(ce => `<th class="n">${ce.short}</th>`).join('')}</tr></thead><tbody>${names.map((a, i) => `<tr><td>${esc(a)}</td><td><select data-acc="${i}" aria-label="تصنيف ${esc(a)}">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(S.cls[a] || classify(a)) === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>${CENTERS.map(ce => `<td class="n">${accts[a][ce.id] ? money(accts[a][ce.id]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">ارفع قائمة الدخل لعرض الحسابات</div>';
+  $('#clsTable').innerHTML = names.length ? `<table><thead><tr><th>الحساب</th><th>التصنيف</th>${CENTERS.map(ce => `<th class="n">${ce.short}</th>`).join('')}</tr></thead><tbody>${names.map((a, i) => `<tr><td>${esc(a)}</td><td><select data-acc="${i}" aria-label="تصنيف ${esc(a)}">${Object.entries(CATS).map(([k, v]) => `<option value="${k}" ${(S.cls[a] || classify(a, groups[a])) === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>${CENTERS.map(ce => `<td class="n">${accts[a][ce.id] ? money(accts[a][ce.id]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<div class="empty">ارفع قائمة الدخل لعرض الحسابات</div>';
   $('#clsTable').querySelectorAll('select').forEach(s => s.onchange = () => { S.cls[names[+s.dataset.acc]] = s.value; refresh(); });
 
   // history
@@ -1152,8 +1184,8 @@ function demoMonth(monthKey, k = 1) {
   // Example figures shaped like the Hamtaro report for 5/2026 (account names, categories, proportions).
   const rnd = rng([...monthKey].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7));
   const j = (v, p = 0.08) => Math.round(v * k * (1 + (rnd() - 0.5) * 2 * p) * 100) / 100;
-  const scale = { exhibit: 0.85, cpstore: 1.45, hamtaro: 1, wagy: 0.6, wholesale: 0.45 };
-  const online = { exhibit: false, cpstore: true, hamtaro: true, wagy: true, wholesale: false };
+  const scale = { exhibit: 0.85, cpstore: 1.45, hamtaro: 1, wagy: 0.6, wholesale: 0.45, main: 2.4 };
+  const online = { exhibit: false, cpstore: true, hamtaro: true, wagy: true, wholesale: false, main: false };
   // [account, Hamtaro base, who has it: a=all, o=online stores, s=shops (no wholesale)]
   const accts = [
     ['إيرادات المبيعات', 0, 'a'],   // filled from the sales files below
@@ -1165,10 +1197,10 @@ function demoMonth(monthKey, k = 1) {
     ['مصاريف هاتف', 287, 'a'], ['التامين الطبي', 183, 'a'], ['خدمة القرض', 3010, 's'],
     ['تكلفة البضاعة المباعة', 0, 'a'],   // filled from the sales files below
     ['الخصم المسموح به', 3840, 's'], ['اشتراك سله', 249, 'o'], ['توصيل المتجر', 10447, 'o'], ['عموله التوصيل', 270, 'o'],
-    ['محروقات', 1607, 'o'], ['صيانه سيارات', 908, 'o'], ['اهالك سيارات', 404, 'o'], ['تامين', 99, 'o'], ['طيار', 219, 'o'],
+    ['مصاريف محروقات', 1607, 'm'], ['صيانه سيارات', 908, 'm'], ['اهالك سيارات', 404, 'm'], ['تامين', 99, 'o'], ['طيار', 219, 'o'],
     ['مصاريف مبيعات تطبيق انجاز', 50, 'o'], ['هدايا عملاء', 10, 's'], ['دعايا واعلان', 42443, 's'],
     ['تحصيل تابي', 3869, 'o'], ['تحصيل تمارا', 5031, 'o'], ['تحصيل منصه سلة', 3407, 'o'], ['عمولات بنكيه', 363, 'a'],
-    ['مستلزمات التغليف', 2417, 'o'], ['اشتراك بيزنس شات', 1180, 'o'],
+    ['مواد تغليف', 2417, 'm'], ['اشتراك بيزنس شات', 1180, 'o'],
   ];
 
   // Items: [code, name, category, brand, import cost, retail price]
@@ -1189,6 +1221,7 @@ function demoMonth(monthKey, k = 1) {
   const salesFiles = [], salesTot = {}, costTot = {};
   for (const ce of CENTERS) {
     const cid = ce.id, f = scale[cid];
+    if (ce.shared) { salesTot[cid] = 0; costTot[cid] = 0; continue; }
     const sh = [['كود الصنف', 'اسم الصنف', 'التصنيف', 'البراند', 'الكمية', 'التكلفة', 'صافي المبيعات']];
     let st = 0, ct = 0;
     for (const [cat, base] of Object.entries(catBase)) {
@@ -1213,6 +1246,8 @@ function demoMonth(monthKey, k = 1) {
     const vals = CENTERS.map(c => {
       if (name === 'إيرادات المبيعات') return Math.round(salesTot[c.id]);
       if (name === 'تكلفة البضاعة المباعة') return Math.round(costTot[c.id]);
+      if (c.shared && who !== 'm') return 0;
+      if ((who === 'm') !== (c.id === 'main')) return 0;
       if (who === 'o' && !online[c.id]) return 0;
       if (who === 's' && c.id === 'wholesale') return 0;
       return j(base * scale[c.id] * (name === 'دعايا واعلان' && c.id === 'exhibit' ? 0.3 : 1));
@@ -1220,7 +1255,7 @@ function demoMonth(monthKey, k = 1) {
     vals.push(vals.reduce((a, b) => a + b, 0));
     aoa.push([name, ...vals]);
   }
-  aoa.push(['صافي الربح / الخساره', '', '', '', '', '', '']);
+  
 
   const orders = [['رقم الطلب', 'المتجر', 'المدينة', 'رسوم التوصيل', 'الحالة']];
   const cities = ['الرياض', 'الرياض', 'الرياض', 'الرياض', 'الرياض', 'جدة', 'الدمام', 'مكة المكرمة', 'الخبر', 'أبها', 'القصيم'];
