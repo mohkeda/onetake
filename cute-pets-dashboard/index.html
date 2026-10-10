@@ -275,6 +275,8 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
             <select id="setWs"><option value="sales">مبيعات البراندات من تقارير المبيعات</option><option value="is">إيراد مركز الجملة في قائمة الدخل</option></select></div>
           <div class="field"><label for="setWsCost">تكلفة بضاعة الجملة</label>
             <select id="setWsCost"><option value="calc">محسوبة من جدول التكلفة</option><option value="is">من قائمة الدخل</option></select></div>
+          <div class="field"><label for="setWsXfer">مبيعات البراندات داخل المتاجر</label>
+            <select id="setWsXfer"><option value="deduct">تُخصم من المتجر وتُحسب للجملة</option><option value="keep">تبقى في المتجر أيضًا</option></select></div>
         </div>
       </div>
 
@@ -384,7 +386,7 @@ function classify(account) {
 const SUBTOTAL = /(^|\s)(اجمالي|مجموع|صافي الربح|صافي الدخل|مجمل الربح|صافي الخساره|total|net income|gross profit)(\s|$)/;
 
 /* ---------- state ---------- */
-const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsRevenue: 'sales', wsCost: 'calc', fuelManual: '', packManual: '' };
+const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsRevenue: 'sales', wsCost: 'calc', wsTransfer: 'deduct', fuelManual: '', packManual: '' };
 let store = { months: {}, history: {}, settings: { ...DEFAULT_SETTINGS }, lastMonth: null };
 let S = blankMonth();
 let raw = {};           // parsed sheets kept in memory for re-mapping: { is, orders, costs, sales:[...] }
@@ -610,18 +612,26 @@ function compute() {
 
   for (const ce of CENTERS) {
     const x = c[ce.id];
-    x.cogs = x.cogsIS;
+    x.cogsBase = x.cogsIS;
+    x.xferRev = 0; x.xferCost = 0;
     if (ce.id === 'wholesale' && hasSales) {
       if (set.wsRevenue === 'sales') x.salesRev = ws.sales;
-      if (set.wsCost === 'calc') x.cogs = ws.cost;
+      if (set.wsCost === 'calc') x.cogsBase = ws.cost;
+    } else if (hasSales && set.wsRevenue === 'sales' && set.wsTransfer === 'deduct' && ws.matrix[ce.id]) {
+      // Brand sales made in a store belong to wholesale: move them (and their cost) out of the store
+      // so the company total counts them once.
+      const M = Object.values(ws.matrix[ce.id]);
+      x.xferRev = -M.reduce((a, v) => a + v.sales, 0);
+      x.xferCost = -Math.min(x.cogsIS, M.reduce((a, v) => a + v.cost, 0));
     }
+    x.cogs = x.cogsBase + x.xferCost;
     x.delivery = x.delIn + x.delOut;
-    x.revenue = x.salesRev + x.delivery;
+    x.revenue = x.salesRev + x.xferRev + x.delivery;
     x.gross = x.revenue - x.cogs;
     x.totalExp = x.expenses + x.fuelAlloc + x.packAlloc;
     x.net = x.gross - x.totalExp;
   }
-  R = { c, ws, hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, xfer: CENTERS.some(ce => c[ce.id].xferRev), hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -804,10 +814,12 @@ function renderResults() {
   // P&L table
   const lines = [
     ['إيرادات المبيعات', 'salesRev', 'indent'],
+    ...(r.xfer ? [['يُخصم: مبيعات براندات الجملة (تُحسب للجملة)', 'xferRev', 'indent']] : []),
     ['إيراد التوصيل داخل الرياض', 'delIn', 'indent'],
     ['إيراد التوصيل خارج الرياض', 'delOut', 'indent'],
     ['إجمالي الإيرادات', 'revenue', 'sub'],
-    ['تكلفة البضاعة المباعة', 'cogs', 'indent', -1],
+    ['تكلفة البضاعة المباعة', 'cogsBase', 'indent', -1],
+    ...(r.xfer ? [['يُخصم: تكلفة براندات الجملة', 'xferCost', 'indent', -1]] : []),
     ['مجمل الربح', 'gross', 'sub'],
     ['المصروفات التشغيلية المباشرة', 'expenses', 'indent', -1],
     ['محروقات محمّلة (طلبات الرياض)', 'fuelAlloc', 'indent', -1],
@@ -825,7 +837,7 @@ function renderResults() {
   t += '</tbody></table>';
   $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
   const notes = [];
-  if (r.hasSales && store.settings.wsRevenue === 'sales') notes.push('إيراد الجملة = مبيعات البراندات في تقارير المتاجر');
+  if (r.hasSales && store.settings.wsRevenue === 'sales') notes.push(r.xfer ? 'مبيعات البراندات في المتاجر محوّلة للجملة' : 'إيراد الجملة = مبيعات البراندات في تقارير المتاجر');
   if (r.hasSales && store.settings.wsCost === 'calc') notes.push('تكلفة الجملة محسوبة من جدول التكلفة');
   $('#plNote').textContent = notes.join(' · ');
 }
@@ -1137,6 +1149,7 @@ bindSetting('#setRiyadh', 'riyadh');
 bindSetting('#setDelivery', 'deliverySource');
 bindSetting('#setWs', 'wsRevenue');
 bindSetting('#setWsCost', 'wsCost');
+bindSetting('#setWsXfer', 'wsTransfer');
 bindSetting('#fuelManual', 'fuelManual', 'input');
 bindSetting('#packManual', 'packManual', 'input');
 
