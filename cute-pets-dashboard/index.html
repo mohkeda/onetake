@@ -701,7 +701,27 @@ function parseTable(kind, aoa, mapOverride) {
       rows.push({ code: String(get(r, 'code')).trim(), name: String(get(r, 'name')).trim(), brand: String(get(r, 'brand')), cost });
     }
   }
+  if (kind === 'sales' && map.service >= 0) excludeConsumption(rows);
   return { rows, map };
+}
+// The combined report puts units used inside the exhibit (e.g. feeding its animals, booked
+// as an expense in Edara) on the same line as the units sold. Units sold = net sales ÷ the item's
+// normal price (median across the centers); the rest, and its cost, is left out.
+function excludeConsumption(rows) {
+  const prices = {};
+  for (const r of rows) if (!r.service && r.qty > 0 && r.sales > 0) (prices[r.code || r.name] = prices[r.code || r.name] || []).push(r.sales / r.qty);
+  for (const r of rows) {
+    const list = (prices[r.code || r.name] || []).slice().sort((a, b) => a - b);
+    // only the exhibit consumes stock internally (استهلاك داخل المعرض); online discounts are real sales
+    if (r.service || r.qty <= 0 || list.length < 2 || matchCenter(r.store) !== 'exhibit') continue;
+    const ref = list[Math.floor(list.length / 2)];
+    if (!(ref > 0) || r.sales / r.qty >= ref * 0.85) continue;
+    const sold = Math.max(0, Math.round(r.sales / ref));
+    if (sold >= r.qty) continue;
+    r.consumed = r.qty - sold;
+    if (r.bookCost != null) r.bookCost *= sold / r.qty;
+    r.qty = sold;
+  }
 }
 
 /* ---------- fixed monthly expenses ---------- */
