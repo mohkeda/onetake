@@ -104,6 +104,12 @@ th, td { padding: 7px 10px; text-align: start; border-bottom: 1px solid var(--li
 thead th { color: var(--ink-2); font-weight: 600; font-size: .8rem; background: var(--surface-2); position: sticky; top: 0; }
 td.n, th.n { text-align: left; font-variant-numeric: tabular-nums; }
 tr.sum td { font-weight: 700; background: var(--surface-2); }
+.rep-title { margin-bottom: 8px; }
+table.rep tr.rep-sales td { background: color-mix(in srgb, var(--s4) 22%, transparent); font-weight: 600; }
+table.rep tr.rep-cost td { background: color-mix(in srgb, var(--s4) 9%, transparent); }
+table.rep tr.rep-profit td { background: color-mix(in srgb, var(--s3) 16%, transparent); }
+table.rep tr.rep-store td { background: color-mix(in srgb, var(--s1) 14%, transparent); }
+table.rep tr.rep-total td { background: color-mix(in srgb, var(--s7, #6250d6) 16%, transparent); font-weight: 700; }
 tr.sec td { font-family: var(--font-display); font-weight: 600; color: var(--accent); padding-top: 12px; }
 .bar { display: inline-block; height: 10px; border-radius: 0 3px 3px 0; background: var(--s1); vertical-align: middle; }
 tr.sub td { font-weight: 600; }
@@ -234,7 +240,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <div id="chartBrands"></div>
         </div>
         <div class="card">
-          <div class="card-head"><h2>البراندات حسب المتجر</h2><p>تكلفة الاستيراد من تقارير إدارة، وسعر الجملة من قائمة أسعار الجملة المحفوظة</p></div>
+          <div class="card-head"><h2>تقرير مبيعات الجملة</h2><p>مبيعات الجملة للمتاجر بسعر الجملة، وتكلفتها بتكلفة الاستيراد، وربح التجزئة في كل متجر</p></div>
           <div class="table-wrap" id="wsMatrix"></div>
         </div>
         <div class="card">
@@ -1156,18 +1162,37 @@ function renderWholesale() {
       tip: `<b>${b.name}</b>${tipRow('الكمية', fmt(B.qty))}${tipRow('إيراد الجملة', money(B.rev))}${tipRow('تكلفة الاستيراد', money(B.imp))}${tipRow('ربح الجملة', money(g), g < 0 ? 'neg' : '')}${tipRow('الهامش', pct(g, B.rev))}` };
   }), [{ key: 'cost', label: 'تكلفة الاستيراد', color: '--cost' }, { key: 'gp', label: 'ربح الجملة', color: '--s3' }], { label: 'براندات الجملة' });
 
-  const centers = CENTERS.filter(ce => ws.matrix[ce.id]);
-  if (!centers.length) { $('#wsMatrix').innerHTML = '<div class="empty">ارفع تقارير المبيعات وجدول تكلفة الجملة من تبويب المدخلات</div>'; }
+  // "تقرير مبيعات الجملة" in the layout of the old Excel report
+  const cols = ['cpstore', 'hamtaro', 'wagy', 'exhibit', 'wholesale'].map(id => ({ id, label: { exhibit: 'المحل (المعرض)', cpstore: 'كيوت', hamtaro: 'هامتارو', wagy: 'واجي', wholesale: 'الجملة' }[id] }));
+  if (!Object.keys(ws.matrix).length) { $('#wsMatrix').innerHTML = '<div class="empty">ارفع تقارير المبيعات من تبويب المدخلات</div>'; }
   else {
-    const tot = { sales: 0, imp: 0, wh: 0 };
-    let t = `<table><thead><tr><th>المتجر</th>${BRANDS.map(b => `<th class="n">${b.name}: الكمية</th>`).join('')}<th class="n">المبيعات</th><th class="n">تكلفة الاستيراد (إدارة)</th><th class="n">تكلفة بضاعة الجملة (سعر الجملة)</th><th class="n">ربح الجملة</th><th class="n">ربح المتجر</th></tr></thead><tbody>`;
-    for (const ce of centers) {
-      const M = ws.matrix[ce.id], isWs = ce.id === 'wholesale';
-      const sales = sumObj(M, 'sales'), imp = sumObj(M, 'imp'), wh = isWs ? sales : sumObj(M, 'wh');
-      tot.sales += sales; tot.imp += imp; tot.wh += wh;
-      t += `<tr><td>${ce.name}</td>${BRANDS.map(b => `<td class="n">${fmt(M[b.id]?.qty || 0)}</td>`).join('')}<td class="n">${money(sales)}</td><td class="n">${money(imp)}</td><td class="n">${isWs ? '—' : money(wh)}</td><td class="n">${signed(wh - imp)}</td><td class="n">${isWs ? '—' : signed(sales - wh)}</td></tr>`;
+    const cell = (id, b, k) => { const v = ws.matrix[id]?.[b]; if (!v) return 0; return k === 'wh' && id === 'wholesale' ? v.sales : v[k]; };
+    const rowOf = (label, f, cls = '') => { const vals = cols.map(c => f(c.id)); return `<tr class="${cls}"><td>${label}</td>${vals.map(v => `<td class="n">${fmt(v, 2)}</td>`).join('')}<td class="n">${fmt(vals.reduce((a, b) => a + b, 0), 2)}</td></tr>`; };
+    const head = first => `<thead><tr><th>${first}</th>${cols.map(c => `<th class="n">${c.label}</th>`).join('')}<th class="n">الإجمالي</th></tr></thead>`;
+    const used = BRANDS.filter(b => cols.some(c => ws.matrix[c.id]?.[b.id]));
+    let t = `<h3 class="rep-title">تقرير مبيعات الجملة</h3><table class="rep">${head('البيان')}<tbody>`;
+    for (const b of used) {
+      t += rowOf(b.name, id => cell(id, b.id, 'wh'), 'rep-sales');
+      t += rowOf('تكلفة البضاعة المباعة', id => cell(id, b.id, 'imp'), 'rep-cost');
+      t += rowOf('الربح', id => cell(id, b.id, 'wh') - cell(id, b.id, 'imp'), 'rep-profit');
     }
-    t += `<tr class="sum"><td>الإجمالي</td>${BRANDS.map(b => `<td class="n">${fmt(ws.byBrand[b.id].qty)}</td>`).join('')}<td class="n">${money(tot.sales)}</td><td class="n">${money(tot.imp)}</td><td class="n"></td><td class="n">${signed(tot.wh - tot.imp)}</td><td class="n"></td></tr></tbody></table>`;
+    const sumB = (id, k) => used.reduce((a, b) => a + cell(id, b.id, k), 0);
+    t += rowOf('اجمالي مبيعات الجملة', id => sumB(id, 'wh'), 'rep-total');
+    t += rowOf('اجمالي التكلفة', id => sumB(id, 'imp'), 'rep-cost');
+    t += rowOf('اجمالي الربح', id => sumB(id, 'wh') - sumB(id, 'imp'), 'rep-profit');
+    t += '</tbody></table>';
+    // retail side: the store's own sales of the brands against what it paid wholesale
+    const sc = cols.filter(c => c.id !== 'wholesale');
+    const rowS = (label, f, cls = '', d = 2) => { const vals = sc.map(c => f(c.id)); return `<tr class="${cls}"><td>${label}</td>${vals.map(v => `<td class="n">${fmt(v, d)}</td>`).join('')}<td class="n">${fmt(vals.reduce((a, b) => a + b, 0), d)}</td></tr>`; };
+    t += `<table class="rep" style="margin-top:14px"><thead><tr><th>اجمالي مبيعات المتجر</th>${sc.map(c => `<th class="n">${c.label}</th>`).join('')}<th class="n">الإجمالي</th></tr></thead><tbody>`;
+    for (const b of used) t += rowS(b.name, id => cell(id, b.id, 'sales'), 'rep-store');
+    t += rowS('الإجمالي', id => sumB(id, 'sales'), 'rep-total');
+    t += rowS('اجمالي تكلفة الجملة', id => sumB(id, 'wh'), 'rep-cost');
+    t += rowS('اجمالي ربح التجزئة', id => sumB(id, 'sales') - sumB(id, 'wh'), 'rep-profit');
+    const markup = id => { const w = sumB(id, 'wh'); return w ? (sumB(id, 'sales') - w) / w * 100 : 0; };
+    const allW = sc.reduce((a, c) => a + sumB(c.id, 'wh'), 0), allS = sc.reduce((a, c) => a + sumB(c.id, 'sales'), 0);
+    t += `<tr><td>نسبة ربح التجزئة إلى تكلفة الجملة</td>${sc.map(c => `<td class="n num">${fmt(markup(c.id), 0)}%</td>`).join('')}<td class="n num">${allW ? fmt((allS - allW) / allW * 100, 0) : 0}%</td></tr>`;
+    t += '</tbody></table>';
     $('#wsMatrix').innerHTML = t;
   }
   const tq = { qty: 0, imp: 0, wh: 0 };
