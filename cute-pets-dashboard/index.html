@@ -358,8 +358,8 @@ const WS_SECTIONS = [
   ['رون رون رطب 75 جم', 4, 4.00, 192.00], ['رون رون رطب كرتون 12×', 4, 4.00, 48.00], ['شيرمان رطب 70 جم', 2, 2.40, 115.20],
   ['شيرمان رطب 85 جم', 4, 2.40, 115.20], ['شيرمان مكافآت 60 جم', 5, 6.50, 312.00],
 ].map(([name, items, piece, carton]) => ({ name, items, piece, carton }));
-// other names a line also covers: Kaniva 370 g (dry) takes the 300 g price
-const WS_ALIASES = { 'كانيفا جاف 300 جم': ['كانيفا 370 جم'] };
+// other names a line also covers: Kaniva 370 g takes the 300 g price, 1.3 kg the 1 kg price
+const WS_ALIASES = { 'كانيفا جاف 300 جم': ['كانيفا 370 جم'], 'كانيفا جاف 1 كجم': ['كانيفا 1.3 كجم'] };
 // tokens for matching an item name to a line: split digits from letters, unify weight units
 const mtok = s => {
   const t = String(s ?? '').toLowerCase()
