@@ -403,7 +403,7 @@ const CATS = {
   pack:     'تغليف (يُوزَّع)',
   ignore:   'تجاهل',
 };
-const LS_KEY = 'cutepets-dashboard-v3';
+const LS_KEY = 'cutepets-dashboard-v4';
 // Real months baked into the published page (never into the repository); see build_publish.py.
 const SEED_MONTHS = /*SEED*/null/*END*/;
 function expandSeed(d) {
@@ -1544,7 +1544,7 @@ function loadDemo() {
 function saveCurrentInputs() {
   const m = $('#month').value;
   if (S.demo) { store.months[m] = { demo: true, k: S.k }; }
-  else if (S.is || S.orders || S.sales.length || S.payroll) store.months[m] = { data: S };
+  else if (S.is || S.orders || S.sales.length || S.payroll) store.months[m] = { data: S, ...(store.months[m]?.data === S && store.months[m].seeded ? { seeded: store.months[m].seeded } : {}) };
   persist();
 }
 function openMonth(m) {
@@ -1639,8 +1639,11 @@ if (SEED_MONTHS) {
   $('#loadDemo').hidden = true;   // real data is in: no demo button that could overwrite a month
   // install the real months once; months the viewer uploaded themselves are never overwritten
   for (const [m, d] of Object.entries(SEED_MONTHS)) {
-    if (store.months[m]?.data) continue;
-    store.months[m] = { data: expandSeed(d) };
+    // a seeded month is refreshed when the built-in data changes; a month the viewer uploaded is kept
+    const seedId = JSON.stringify(d).length + ':' + (d.payroll ? d.payroll.r.length : 0);
+    const cur = store.months[m];
+    if (cur?.data && (!cur.seeded || cur.seeded === seedId)) continue;
+    store.months[m] = { data: expandSeed(d), seeded: seedId };
     S = store.months[m].data; store.history[m] = summary(compute());
   }
   persist();
