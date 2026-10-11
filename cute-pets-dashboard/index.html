@@ -227,7 +227,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         </div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>المبيعات حسب التصنيف</h2><p>من عمود التصنيف في تقرير المبيعات</p></div>
+        <div class="card-head"><h2>المبيعات حسب التصنيف</h2><p>من عمود التصنيف في تقرير المبيعات، أو العلامة التجارية إن لم يوجد</p></div>
         <div class="table-wrap" id="stCats"></div>
       </div>
       <div class="card" id="cBrandsCard">
@@ -359,15 +359,26 @@ const WS_SECTIONS = [
   ['شيرمان رطب 85 جم', 4, 2.40, 115.20], ['شيرمان مكافآت 60 جم', 5, 6.50, 312.00],
 ].map(([name, items, piece, carton]) => ({ name, items, piece, carton }));
 // tokens for matching an item name to a line: split digits from letters, unify weight units
-const mtok = s => norm(String(s ?? '').replace(/(\d)([^\d\s.])/g, '$1 $2').replace(/([^\d\s.])(\d)/g, '$1 $2'))
-  .split(/\s+/).filter(Boolean)
-  .map(t => /^(جرام|جرامات|غرام|غ|gm|g|gr|grams?)$/.test(t) ? 'جم' : /^(كيلو|كغ|كيلوجرام|كيلوغرام|kg)$/.test(t) ? 'كجم' : t);
+const mtok = s => {
+  const t = String(s ?? '').toLowerCase()
+    .replace(/[ً-ْـ]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+    .replace(/كارتون|كرتون/g, ' كرتون ')
+    .replace(/(\d)([^\d\s.])/g, '$1 $2').replace(/([^\d\s.])(\d)/g, '$1 $2')
+    .replace(/[^\p{L}\p{N}.]+/gu, ' ').replace(/(^|[^\d])\.|\.(?!\d)/g, '$1 ')   // keep decimals such as 1.3
+    .trim().split(/\s+/).filter(Boolean)
+    .map(t => /^(جرام|جرامات|غرام|غ|gm|g|gr|grams?)$/.test(t) ? 'جم' : /^(كيلو|كغ|كيلوجرام|كيلوغرام|kg)$/.test(t) ? 'كجم'
+      : /^(مكافاه|مكافات|مكافئات|مكافئه|مكافاءه)$/.test(t) ? 'مكافات' : t);
+  if (t.includes('ظرف') || t.includes('كرتون')) t.push('رطب');   // pouches and pouch cartons are wet food
+  return t;
+};
+// a line named after a product range (e.g. فيوجن) beats a generic type + size line
+const GENERIC_TOK = new Set(['كانيفا', 'كاندي', 'رون', 'شيرمان', 'رطب', 'جاف', 'مكافات', 'كرتون', 'جم', 'كجم']);
 function matchSection(text) {
   if (!WS_SECTIONS[0].tokens) for (const sec of WS_SECTIONS) { sec.tokens = mtok(sec.name); sec.isCarton = sec.tokens.includes('كرتون'); }
   const have = new Set(mtok(text));
-  let best = null;
-  for (const sec of WS_SECTIONS) if (sec.tokens.every(t => have.has(t)) && (!best || sec.tokens.length > best.tokens.length)) best = sec;
-  return best;
+  const hits = WS_SECTIONS.filter(sec => sec.tokens.every(t => have.has(t)));
+  const named = hits.filter(sec => sec.tokens.some(t => !GENERIC_TOK.has(t) && !/^[\d.]+$/.test(t)));
+  return (named.length ? named : hits).sort((x, y) => y.tokens.length - x.tokens.length)[0] || null;
 }
 
 const CATS = {
@@ -505,8 +516,9 @@ const FIELDS = {
     ['name', 'اسم الصنف *', ['اسم الصنف', 'الصنف', 'المنتج', 'الوصف', 'item', 'product', 'name']],
     ['brand', 'البراند', ['البراند', 'الماركه', 'العلامه التجاريه', 'العلامه', 'brand']],
     ['category', 'التصنيف', ['التصنيف', 'تصنيف', 'الفئه', 'المجموعه', 'القسم', 'category', 'group']],
-    ['qty', 'الكمية *', ['الكميه المباعه', 'الكميه', 'كميه', 'العدد', 'qty', 'quantity']],
-    ['bookCost', 'تكلفة الاستيراد', ['تكلفه المبيعات', 'اجمالي التكلفه', 'قيمه التكلفه', 'تكلفه البضاعه', 'تكلفه الوحده', 'التكلفه', 'تكلفه', 'cost']],
+    ['qty', 'الكمية (الصافي) *', ['الكميه المباعه', 'الصافي', 'الكميه', 'كميه', 'العدد', 'qty', 'quantity']],
+    ['gp', 'مجمل الربح', ['مجمل الربح بمتوسط التكلفه', 'مجمل الربح', 'gross profit'], /%/],
+    ['bookCost', 'تكلفة الاستيراد', ['تكلفه المبيعات', 'اجمالي التكلفه', 'قيمه التكلفه', 'تكلفه البضاعه', 'تكلفه الوحده', 'التكلفه', 'تكلفه', 'cost'], /ربح|%/],
     ['sales', 'صافي المبيعات *', ['صافي المبيعات', 'قيمه المبيعات', 'اجمالي المبيعات', 'المبيعات', 'الصافي', 'الاجمالي', 'القيمه', 'net', 'total', 'amount']],
   ],
   costs: [
@@ -533,12 +545,13 @@ function findHeaderRow(aoa, test) {
   return best;
 }
 function autoMap(headers, fields) {
-  const H = headers.map(norm);
+  const H = headers.map(h => norm(h) + (/%/.test(String(h ?? '')) ? ' %' : ''));
   const used = new Set(), map = {};
-  for (const [key, , syns] of fields) {
+  for (const [key, , syns, exclude] of fields) {
     let idx = -1;
-    for (const s of syns.map(norm)) { idx = H.findIndex((h, i) => !used.has(i) && h === s); if (idx >= 0) break; }
-    if (idx < 0) for (const s of syns.map(norm)) { idx = H.findIndex((h, i) => !used.has(i) && h && h.includes(s)); if (idx >= 0) break; }
+    const ok = (h, i) => !used.has(i) && !(exclude && exclude.test(h));
+    for (const s of syns.map(norm)) { idx = H.findIndex((h, i) => ok(h, i) && h === s); if (idx >= 0) break; }
+    if (idx < 0) for (const s of syns.map(norm)) { idx = H.findIndex((h, i) => ok(h, i) && h && h.includes(s)); if (idx >= 0) break; }
     map[key] = idx; if (idx >= 0) used.add(idx);
   }
   return map;
@@ -623,7 +636,8 @@ function parseTable(kind, aoa, mapOverride) {
       const name = String(get(r, 'name')).trim();
       if (!name || SUBTOTAL.test(norm(name))) continue;
       rows.push({ store: String(get(r, 'store')), code: String(get(r, 'code')).trim(), name, brand: String(get(r, 'brand')), category: String(get(r, 'category')).trim(), qty: toNum(get(r, 'qty')), sales: toNum(get(r, 'sales')),
-        bookCost: map.bookCost >= 0 ? toNum(get(r, 'bookCost')) * (unitBook ? toNum(get(r, 'qty')) : 1) : null });
+        bookCost: map.bookCost >= 0 ? toNum(get(r, 'bookCost')) * (unitBook ? toNum(get(r, 'qty')) : 1)
+          : map.gp >= 0 ? toNum(get(r, 'sales')) - toNum(get(r, 'gp')) : null });
     } else if (kind === 'costs') {
       const cost = toNum(get(r, 'cost'));
       if (!cost) continue;
@@ -730,7 +744,8 @@ function compute() {
   for (const f of S.sales) {
     for (const r of f.rows) {
       const center = matchCenter(r.store) || f.center;
-      if (r.category) { cats[center] = cats[center] || {}; cats[center][r.category] = (cats[center][r.category] || 0) + r.sales; }
+      const catKey = r.category || r.brand.trim();
+      if (catKey) { cats[center] = cats[center] || {}; cats[center][catKey] = (cats[center][catKey] || 0) + r.sales; }
       const brandTxt = r.brand || brandByCode.get(norm(r.code)) || brandByCode.get('n:' + norm(r.name)) || '';
       const bid = matchBrand(brandTxt) || matchBrand(r.name);
       if (!bid) continue;
