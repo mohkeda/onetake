@@ -701,7 +701,11 @@ function parseTable(kind, aoa, mapOverride) {
       rows.push({ code: String(get(r, 'code')).trim(), name: String(get(r, 'name')).trim(), brand: String(get(r, 'brand')), cost });
     }
   }
-  if (kind === 'sales' && map.service >= 0) excludeConsumption(rows);
+  if (kind === 'sales') {
+    // zero-value lines (units out with no sale) are not sales: drop them and their cost; returns stay
+    for (const r of rows) if (!r.service && r.qty > 0 && Math.abs(r.sales) < 0.005) { r.consumed = r.qty; r.qty = 0; if (r.bookCost != null) r.bookCost = 0; }
+    if (map.service >= 0) excludeConsumption(rows);
+  }
   return { rows, map };
 }
 // The combined report puts units used inside the exhibit (e.g. feeding its animals, booked
