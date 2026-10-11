@@ -1266,10 +1266,14 @@ function renderStatement() {
   $('#cSvcCard').hidden = !SV;
   if (SV) {
     const list = Object.entries(SV).sort((a, b) => b[1] - a[1]), tot = list.reduce((a, [, v]) => a + v, 0);
-    const isSvc = x.lines.filter(l => l.cat === 'delivery' || l.cat === 'other').reduce((a, l) => a + l.amount, 0) + x.delInIS + x.delOutIS;
-    $('#cSvc').innerHTML = `<table><thead><tr><th>الخدمة</th><th class="n">صافي الإيراد</th><th class="n">النسبة</th></tr></thead><tbody>${list.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td><td class="n num">${pct(v, tot)}</td></tr>`).join('')}<tr class="sum"><td>الإجمالي</td><td class="n">${money(tot)}</td><td class="n num">100%</td></tr></tbody></table>`;
+    let st = '';
+    for (const g of SVC_GROUPS) {
+      const items = list.filter(([k]) => svcGroup(k) === g); if (!items.length) continue;
+      const gt = items.reduce((a, [, v]) => a + v, 0);
+      st += `<tr class="sub"><td>${g[1]}</td><td class="n">${money(gt)}</td><td class="n num">${pct(gt, tot)}</td></tr>` + items.map(([k, v]) => `<tr class="indent"><td>${esc(k)}</td><td class="n">${money(v)}</td><td class="n num">${pct(v, tot)}</td></tr>`).join('');
+    }
+    $('#cSvc').innerHTML = `<table><thead><tr><th>الخدمة</th><th class="n">صافي الإيراد</th><th class="n">النسبة</th></tr></thead><tbody>${st}<tr class="sum"><td>الإجمالي</td><td class="n">${money(tot)}</td><td class="n num">100%</td></tr></tbody></table>`;
     $('#cSvcNote').textContent = `من تقرير المبيعات المجمع · تحليلي فقط، الإيراد في قائمة الدخل من إدارة (ايراد الخدمات ${money(x.delInIS + x.delOutIS)})`;
-    void isSvc;
   }
 
   // wholesale brands sold in this store, or the wholesale analysis on the wholesale page
@@ -1305,7 +1309,9 @@ function renderStatement() {
   t += row('إيراد التوصيل داخل الرياض', x.delIn, 'indent', 'rev');
   for (const [a, v] of lines('other')) t += row(a, v, 'indent', 'rev');
   if (x.mainRev) t += row(`حصة الرئيسي من الإيرادات (${fmt(x.mainShare * 100, 1)}%)`, x.mainRev, 'indent', 'rev');
-  if (Math.abs(x.svcDiff) >= 0.5) t += row(x.ordAll ? 'ايراد الخدمات: الفرق عن تقرير الطلبات' : 'ايراد الخدمات', x.svcDiff, 'indent', 'rev');
+  const split = !x.ordAll && Math.abs(x.svcDiff) >= 0.5 ? svcSplit(stCenter, x.svcDiff) : null;
+  if (split) split.forEach(([label, v]) => { t += row(label, v, 'indent', 'rev'); });
+  else if (Math.abs(x.svcDiff) >= 0.5) t += row(x.ordAll ? 'ايراد الخدمات: الفرق عن تقرير الطلبات' : 'ايراد الخدمات', x.svcDiff, 'indent', 'rev');
   t += row('إجمالي الإيرادات', rev, 'sub', 'rev');
   t += `<tr class="sec"><td colspan="4">ثانياً: المصروفات</td></tr>`;
   t += row('المصاريف الإدارية', x.adminT, 'sub');
@@ -1326,7 +1332,7 @@ function renderStatement() {
   $('#stSummary').innerHTML = `<table><tbody>
     ${row('إيرادات المبيعات بدون بضاعة الجملة', x.revMain, '', 'none')}${row('إيرادات مبيعات الجملة', x.revBrand, '', 'none')}
     ${row('خدمات الشحن الخارجي', x.delOut, '', 'none')}${row('إيراد التوصيل داخل الرياض', x.delIn, '', 'none')}
-    ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}${x.mainRev ? row('حصة الرئيسي من الإيرادات', x.mainRev, '', 'none') : ''}
+    ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${split ? split.map(([label, v]) => row(label, v, '', 'none')).join('') : Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}${x.mainRev ? row('حصة الرئيسي من الإيرادات', x.mainRev, '', 'none') : ''}
     ${row('إجمالي الإيرادات', rev, 'sub', 'none')}${row('المصاريف الإدارية', x.adminT, '', 'none')}${row('المصاريف التشغيلية', x.opex, '', 'none')}
     ${row('إجمالي المصروفات', exp, 'sub', 'none')}${row('صافي الربح / الخسارة', x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
 
@@ -1344,6 +1350,23 @@ function renderStatement() {
   }
   ct += `<tr class="sum"><td>الإجمالي</td>${cols.map(c => `<td class="n">${money(Object.values(c.data).reduce((a, b) => a + b, 0))}</td>`).join('')}<td></td></tr></tbody></table>`;
   $('#stCats').innerHTML = ct;
+}
+
+/* ---------- services: grooming and entertainment are separate revenue ---------- */
+const SVC_GROUPS = [
+  ['groom', 'إيراد الجرومنج', /ترويش|حلاق|دراي|شاور|استحمام|اظافر|اضافر|تمشيط|groom/],
+  ['fun', 'إيراد الترفيه (منطقة المرح)', /مرح|ترفيه|play/],
+  ['delivery', 'خدمات التوصيل والدفع عند الاستلام', /توصيل|الاستلام|cod/],
+  ['other', 'خدمات أخرى', /./],
+];
+const svcGroup = name => SVC_GROUPS.find(g => g[2].test(norm(name)));
+// split a center's service revenue (from the statement) by the shares in the sales report
+function svcSplit(cid, total) {
+  const SV = R.svcs[cid]; if (!SV) return null;
+  const by = {};
+  for (const [k, v] of Object.entries(SV)) { const g = svcGroup(k); if (g[0] !== 'delivery') by[g[0]] = (by[g[0]] || 0) + v; }
+  const sum = Object.values(by).reduce((a, b) => a + b, 0); if (!sum) return null;
+  return SVC_GROUPS.filter(g => by[g[0]]).map(g => [g[1], total * by[g[0]] / sum]);
 }
 
 /* ---------- category profitability, break-even and sales mix ---------- */
