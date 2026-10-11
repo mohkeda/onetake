@@ -281,6 +281,13 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <input type="file" id="file-sales" accept=".xlsx,.xls,.csv" multiple hidden>
           <div class="status"></div><div class="map" id="map-sales"></div>
         </div>
+        <div class="card up" id="up-payroll">
+          <h3>٥. كشف الرواتب (شهري)</h3>
+          <ul><li>الاسم، اجمالي الراتب + الإضافي، الجزاءات/التأخيرات/الغياب، الملاحظات، مركز التكلفة</li><li>يحل محل حسابات الرواتب في قائمة الدخل، ويُوزَّع حسب الملاحظات</li></ul>
+          <label class="drop" for="file-payroll">اسحب الملف هنا أو اضغط للاختيار</label>
+          <input type="file" id="file-payroll" accept=".xlsx,.xls,.csv" hidden>
+          <div class="status"></div><div class="table-wrap" id="payrollSummary"></div><div class="map" id="map-payroll"></div>
+        </div>
         <div class="card up" id="up-costs">
           <h3>٤. تكلفة بضاعة الجملة (محفوظة)</h3>
           <ul><li>قائمة الأقسام محفوظة داخل اللوحة: <span id="wsListCount"></span> قسم، لا تحتاج رفع</li><li>اختياري: ملف بأسعار أصناف محددة (كود الصنف، سعر الجملة) يتقدم على سعر القسم</li></ul>
@@ -404,6 +411,7 @@ function expandSeed(d) {
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cancelled: !!ca, pickup: !!pu })) })) },
     sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost]) => ({ store: '', code: '', name, brand, category: '', qty, sales, bookCost })) })),
+    payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost], i) => ({ name: `موظف ${i + 1}`, cc, note, cost })) } : null,
     costs: null, cls: d.cls || {}, demo: false, k: 1 };
 }
 
@@ -434,7 +442,7 @@ function toast(msg) { const t = document.createElement('div'); t.className = 'to
 function matchCenter(text) {
   const t = norm(text);
   if (!t) return null;
-  if (t.includes('معرض') || t.includes('exhibit') || t.includes('showroom')) return 'exhibit';
+  if (t.includes('معرض') || /(^|\s)(ال)?محل(\s|$)/.test(t) || t.includes('exhibit') || t.includes('showroom')) return 'exhibit';
   if (t.includes('هامتارو') || t.includes('همتارو') || t.includes('همترو') || t.includes('hamtaro') || t.includes('hamtro')) return 'hamtaro';
   if (t.includes('واجي') || t.includes('wagy') || t.includes('waggy') || t.includes('wagi')) return 'wagy';
   if (t.includes('جمله') || t.includes('wholesale')) return 'wholesale';
@@ -531,6 +539,17 @@ const FIELDS = {
     ['gp', 'مجمل الربح', ['مجمل الربح بمتوسط التكلفه', 'مجمل الربح', 'gross profit'], /%/],
     ['bookCost', 'تكلفة الاستيراد', ['تكلفه المبيعات', 'اجمالي التكلفه', 'قيمه التكلفه', 'تكلفه البضاعه', 'تكلفه الوحده', 'التكلفه', 'تكلفه', 'cost'], /ربح|%/],
     ['sales', 'صافي المبيعات *', ['صافي المبيعات', 'قيمه المبيعات', 'اجمالي المبيعات', 'المبيعات', 'الصافي', 'الاجمالي', 'القيمه', 'net', 'total', 'amount']],
+  ],
+  payroll: [
+    ['name', 'الاسم *', ['الاسم', 'اسم الموظف', 'الموظف', 'name']],
+    ['gross', 'اجمالي الراتب + الإضافي', ['اجمالي الراتب الاضافي', 'اجمالي الراتب مع الاضافي', 'الراتب مع الاضافي']],
+    ['base', 'اجمالي الراتب', ['اجمالي الراتب', 'الراتب الاساسي', 'الراتب'], /اضافي/],
+    ['overtime', 'الإضافي', ['اضافي', 'الاضافي'], /راتب/],
+    ['penalty', 'الجزاءات', ['جزاءات', 'الجزاءات']],
+    ['late', 'التأخيرات', ['تاخيرات', 'التاخيرات', 'تاخير']],
+    ['absence', 'الغياب', ['غياب', 'الغياب']],
+    ['note', 'الملاحظات', ['ملاحظات', 'الملاحظات', 'ملاحظه']],
+    ['cc', 'مركز التكلفة *', ['مركز التكلفه', 'المركز', 'القسم', 'cost center']],
   ],
   costs: [
     ['code', 'كود الصنف', ['كود الصنف', 'رقم الصنف', 'رمز الصنف', 'الكود', 'كود', 'باركود', 'sku', 'code']],
@@ -649,6 +668,13 @@ function parseTable(kind, aoa, mapOverride) {
       rows.push({ store: String(get(r, 'store')), code: String(get(r, 'code')).trim(), name, brand: String(get(r, 'brand')), category: String(get(r, 'category')).trim(), qty: toNum(get(r, 'qty')), sales: toNum(get(r, 'sales')),
         bookCost: map.bookCost >= 0 ? toNum(get(r, 'bookCost')) * (unitBook ? toNum(get(r, 'qty')) : 1)
           : map.gp >= 0 ? toNum(get(r, 'sales')) - toNum(get(r, 'gp')) : null });
+    } else if (kind === 'payroll') {
+      const name = String(get(r, 'name')).trim();
+      if (!name || /^ال?اجمالي/.test(norm(name)) || SUBTOTAL.test(norm(name))) continue;
+      const gross = toNum(get(r, 'gross')) || toNum(get(r, 'base')) + toNum(get(r, 'overtime'));
+      // cost to the company: salary + overtime − penalties − lateness − absence (advances are not a cost)
+      const cost = gross - toNum(get(r, 'penalty')) - toNum(get(r, 'late')) - toNum(get(r, 'absence'));
+      rows.push({ name, cc: String(get(r, 'cc')).trim(), note: String(get(r, 'note')).trim(), cost });
     } else if (kind === 'costs') {
       const cost = toNum(get(r, 'cost'));
       if (!cost) continue;
@@ -656,6 +682,29 @@ function parseTable(kind, aoa, mapOverride) {
     }
   }
   return { rows, map };
+}
+
+/* ---------- payroll (rules come from the sheet's notes) ---------- */
+const PAY_LINES = { staff: 'الرواتب', mgmt: 'رواتب الإدارة', saudi: 'رواتب السعوديين (سعودة)' };
+function payrollAlloc(rows) {
+  const byCenter = {}, unknown = [];
+  const add = (cid, kind, v) => { const B = byCenter[cid] = byCenter[cid] || { staff: 0, mgmt: 0, saudi: 0 }; B[kind] += v; };
+  const salesCenters = CENTERS.filter(ce => !ce.shared).map(ce => ce.id);
+  const onlineStores = CENTERS.filter(ce => ce.delivery).map(ce => ce.id);
+  for (const r of rows) {
+    const note = norm(r.note), cc = norm(r.cc), both = `${note} ${cc}`;
+    const nSplit = +((both.match(/(\d+)\s*(مراكز|متاجر)/) || [])[1] || 0);
+    let kind = /اداره|اداري/.test(note) ? 'mgmt' : /سعود/.test(note) ? 'saudi' : 'staff';
+    let targets;
+    if (/متاجر/.test(both) && nSplit) targets = onlineStores;           // "يقسم على 3 متاجر"
+    else if (/مراكز/.test(both) && nSplit) targets = salesCenters;     // "يقسم على 5 مراكز"
+    else { const cid = matchCenter(r.cc); targets = cid ? [cid] : []; }
+    if (!targets.length) { unknown.push(r); continue; }
+    // "1500 ريال فقط رواتب سعوديين": the center bears that fixed amount
+    const amount = kind === 'saudi' ? (+((note.match(/\d+/) || [])[0]) || r.cost) : r.cost;
+    targets.forEach(cid => add(cid, kind, amount / targets.length));
+  }
+  return { byCenter, unknown };
 }
 
 /* ---------- computation ---------- */
@@ -673,12 +722,16 @@ function compute() {
   // Amounts keep their sign (a negative expense is a reversal). If a file books revenue as negative
   // (credit-negative convention), the whole file is flipped once.
   const isRows = S.is?.rows || [];
+  const hasPayroll = !!(S.payroll?.rows?.length);
+  const pay = hasPayroll ? payrollAlloc(S.payroll.rows) : null;
+  let salariesReplaced = 0;
   const revSum = isRows.filter(r => ['sales', 'other', 'delivery'].includes(S.cls[r.account] || classify(r.account, r.group))).reduce((a, r) => a + r.amount, 0);
   const flip = revSum < 0 ? -1 : 1;
   for (const r of isRows) {
     const cat = S.cls[r.account] || classify(r.account, r.group);
     const a = r.amount * flip, x = c[r.center];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
+    if (hasPayroll && /رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
     x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a });
     if (cat === 'sales') x.salesRev += a;
     else if (cat === 'contra') x.salesRev -= Math.abs(a);
@@ -695,6 +748,10 @@ function compute() {
       else if (cat === 'admin') x.kept.admin += a;
       else x.kept.op += a;
     }
+  }
+
+  if (pay) for (const [cid, B] of Object.entries(pay.byCenter)) for (const k of ['staff', 'mgmt', 'saudi']) if (B[k]) {
+    c[cid].admin += B[k]; c[cid].lines.push({ account: PAY_LINES[k], cat: 'admin', amount: B[k] });
   }
 
   // Orders
@@ -840,7 +897,7 @@ function compute() {
       CENTERS.forEach(ce => finalize(c[ce.id]));
     }
   }
-  R = { c, ws, cats, mode, mainAllocated, xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, cats, mode, mainAllocated, pay, salariesReplaced, xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -1255,6 +1312,14 @@ function renderInputs() {
   const CT = S.demo ? S.costs : store.costs;
   $('#wsListCount').textContent = WS_SECTIONS.length;
   st('up-costs', `<span class="badge ok">✓ قائمة الأقسام (${WS_SECTIONS.length})</span>` + (CT ? ` <span class="badge ok">✓ ${esc(CT.fileName)}</span> <span class="num">${fmt(CT.rows.length)}</span> صنف` : ''));
+  st('up-payroll', S.payroll ? `<span class="badge ok">✓ ${esc(S.payroll.fileName)}</span> <span class="num">${fmt(S.payroll.rows.length)}</span> موظف <button class="btn small" id="rmPayroll">حذف</button>` : '<span class="badge">لم يُرفع</span>');
+  if ($('#rmPayroll')) $('#rmPayroll').onclick = () => { S.payroll = null; refresh(); };
+  if (R.pay) {
+    const P = R.pay.byCenter, ids = CENTERS.filter(ce => P[ce.id]);
+    const tot = k => ids.reduce((a, ce) => a + P[ce.id][k], 0);
+    $('#payrollSummary').innerHTML = `<table><thead><tr><th>المركز</th><th class="n">الرواتب</th><th class="n">الإدارة</th><th class="n">السعودة</th><th class="n">الإجمالي</th></tr></thead><tbody>${ids.map(ce => { const B = P[ce.id]; return `<tr><td>${ce.short}</td><td class="n">${money(B.staff)}</td><td class="n">${money(B.mgmt)}</td><td class="n">${money(B.saudi)}</td><td class="n">${money(B.staff + B.mgmt + B.saudi)}</td></tr>`; }).join('')}<tr class="sum"><td>الإجمالي</td><td class="n">${money(tot('staff'))}</td><td class="n">${money(tot('mgmt'))}</td><td class="n">${money(tot('saudi'))}</td><td class="n">${money(tot('staff') + tot('mgmt') + tot('saudi'))}</td></tr></tbody></table>`
+      + `<p class="note">استُبعدت حسابات الرواتب من قائمة الدخل: <b class="num">${money(R.salariesReplaced)}</b>${R.pay.unknown.length ? ` · بدون مركز معروف: ${R.pay.unknown.map(u => esc(u.cc || '—')).join('، ')}` : ''}</p>`;
+  } else $('#payrollSummary').innerHTML = '';
   st('up-sales', S.sales.length ? S.sales.map((f, i) => `<div class="file-row"><span class="badge ok">✓ ${esc(f.fileName)}</span> ${CMAP[f.center]?.name || 'حسب عمود المتجر'} · <span class="num">${fmt(f.rows.length)}</span> صف <button class="btn small" data-rm="${i}">حذف</button></div>`).join('') : '<span class="badge">لم يُرفع</span>');
   $('#up-sales .status').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.sales.splice(+b.dataset.rm, 1); raw.sales?.splice(+b.dataset.rm, 1); refresh(); });
 
@@ -1329,6 +1394,14 @@ setupDrop('up-orders', 'file-orders', async file => {
   S.orders.files.push(entry);
   refresh();
   mappingUI($('#up-orders .map'), (aoa[p.map.header] || []).map(String), FIELDS.orders, p.map, m => { entry.rows = parseTable('orders', aoa, m).rows; refresh(); });
+});
+setupDrop('up-payroll', 'file-payroll', async file => {
+  const aoa = await safeRead(file, 'up-payroll'); if (!aoa) return;
+  leaveDemo();
+  const p = parseTable('payroll', aoa);
+  S.payroll = { fileName: file.name, rows: p.rows };
+  refresh();
+  mappingUI($('#up-payroll .map'), (aoa[p.map.header] || []).map(String), FIELDS.payroll, p.map, m => { S.payroll.rows = parseTable('payroll', aoa, m).rows; refresh(); });
 });
 setupDrop('up-costs', 'file-costs', async file => {
   const aoa = await safeRead(file, 'up-costs'); if (!aoa) return;
@@ -1471,13 +1544,13 @@ function loadDemo() {
 function saveCurrentInputs() {
   const m = $('#month').value;
   if (S.demo) { store.months[m] = { demo: true, k: S.k }; }
-  else if (S.is || S.orders || S.sales.length) store.months[m] = { data: S };
+  else if (S.is || S.orders || S.sales.length || S.payroll) store.months[m] = { data: S };
   persist();
 }
 function openMonth(m) {
   const saved = store.months[m];
   raw = {};
-  ['#up-is', '#up-orders', '#up-sales', '#up-costs'].forEach(id => $(`${id} .map`).innerHTML = '');
+  ['#up-is', '#up-orders', '#up-sales', '#up-costs', '#up-payroll'].forEach(id => $(`${id} .map`).innerHTML = '');
   if (saved?.data) S = saved.data;
   else if (saved?.demo) S = applyDemo(demoMonth(m, saved.k ?? 1.02), saved.k ?? 1.02);
   else {
