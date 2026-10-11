@@ -237,8 +237,12 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <div class="card-head"><h2>البراندات حسب المتجر</h2><p>تكلفة الاستيراد من تقارير إدارة، وسعر الجملة من قائمة أسعار الجملة المحفوظة</p></div>
           <div class="table-wrap" id="wsMatrix"></div>
         </div>
+        <div class="card">
+          <div class="card-head"><h2>تكلفة بضاعة الجملة حسب القسم</h2><p>القائمة الثابتة (سعر الحبة / الكرتون قبل الضريبة) مع مبيعات المتاجر هذا الشهر</p></div>
+          <div class="table-wrap" id="wsSections"></div>
+        </div>
         <div class="card" id="wsUnmatchedCard" hidden>
-          <div class="card-head"><h2>أصناف بدون سعر جملة</h2><p>بيعت في المتاجر وليس لها سعر في قائمة أسعار الجملة، فلم يُحسب عليها ربح للجملة</p></div>
+          <div class="card-head"><h2>أصناف بدون قسم في قائمة الجملة</h2><p>أصناف براندات بيعت في المتاجر ولم يُعرف قسمها من اسمها، فلم يُحسب عليها ربح للجملة. أضف لها سعرًا أو أرسل اسم القسم الصحيح</p></div>
           <div class="table-wrap" id="wsUnmatched"></div>
         </div>
       </div>
@@ -272,8 +276,8 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <div class="status"></div><div class="map" id="map-sales"></div>
         </div>
         <div class="card up" id="up-costs">
-          <h3>٤. قائمة أسعار الجملة (ثابتة)</h3>
-          <ul><li>كود الصنف، اسم الصنف، البراند، سعر الجملة للوحدة</li><li>تُرفع مرة واحدة وتبقى محفوظة لكل الأشهر</li></ul>
+          <h3>٤. تكلفة بضاعة الجملة (محفوظة)</h3>
+          <ul><li>قائمة الأقسام محفوظة داخل اللوحة: <span id="wsListCount"></span> قسم، لا تحتاج رفع</li><li>اختياري: ملف بأسعار أصناف محددة (كود الصنف، سعر الجملة) يتقدم على سعر القسم</li></ul>
           <label class="drop" for="file-costs">اسحب الملف هنا أو اضغط للاختيار</label>
           <input type="file" id="file-costs" accept=".xlsx,.xls,.csv" hidden>
           <div class="status"></div><div class="map" id="map-costs"></div>
@@ -337,6 +341,29 @@ const BRANDS = [
   { id: 'sherman', name: 'شيرمان',  keys: ['شيرمان', 'sherman'] },
   { id: 'candy',   name: 'كاندي',   keys: ['كاندي', 'candy', 'kandy'] },
 ];
+// Wholesale cost list by product line, prices before VAT: [line, items, per piece, per carton].
+// This is what a store pays wholesale; Edara's sales reports carry the import cost.
+const WS_SECTIONS = [
+  ['كانيفا رطب 70 جم', 20, 3.75, 180.02], ['كانيفا رطب 35 جم', 2, 3.45, 165.75], ['كانيفا رطب 80 جم', 1, 5.50, 264.00],
+  ['كانيفا رطب 170 جم', 1, 9.50, 456.00], ['كانيفا رطب كرتون 12×70 جم', 6, 3.75, 45.00],
+  ['كانيفا مكافآت', 5, 7.50, 360.00],   // one wholesale price for all Kaniva treats
+  ['كانيفا جاف 300 جم', 7, 13.50, 162.00], ['كانيفا جاف 1 كجم', 7, 43.00, 258.00],
+  ['كانيفا جاف 8 كجم', 1, 203.00, 203.00], ['كانيفا فيوجن', 3, 33.00, 198.00], ['كاندي رطب', 10, 2.95, 141.78],
+  ['رون رون رطب 75 جم', 4, 4.00, 192.00], ['رون رون رطب كرتون 12×', 4, 4.00, 48.00], ['شيرمان رطب 70 جم', 2, 2.40, 115.20],
+  ['شيرمان رطب 85 جم', 4, 2.40, 115.20], ['شيرمان مكافآت 60 جم', 5, 6.50, 312.00],
+].map(([name, items, piece, carton]) => ({ name, items, piece, carton }));
+// tokens for matching an item name to a line: split digits from letters, unify weight units
+const mtok = s => norm(String(s ?? '').replace(/(\d)([^\d\s.])/g, '$1 $2').replace(/([^\d\s.])(\d)/g, '$1 $2'))
+  .split(/\s+/).filter(Boolean)
+  .map(t => /^(جرام|جرامات|غرام|غ|gm|g|gr|grams?)$/.test(t) ? 'جم' : /^(كيلو|كغ|كيلوجرام|كيلوغرام|kg)$/.test(t) ? 'كجم' : t);
+function matchSection(text) {
+  if (!WS_SECTIONS[0].tokens) for (const sec of WS_SECTIONS) { sec.tokens = mtok(sec.name); sec.isCarton = sec.tokens.includes('كرتون'); }
+  const have = new Set(mtok(text));
+  let best = null;
+  for (const sec of WS_SECTIONS) if (sec.tokens.every(t => have.has(t)) && (!best || sec.tokens.length > best.tokens.length)) best = sec;
+  return best;
+}
+
 const CATS = {
   sales:    'إيراد مبيعات',
   contra:   'مردودات مبيعات',
@@ -691,7 +718,7 @@ function compute() {
     if (r.code) { costByCode.set(norm(r.code), r.cost); if (r.brand) brandByCode.set(norm(r.code), r.brand); }
     if (r.name) { costByName.set(norm(r.name), r.cost); if (r.brand && !r.code) brandByCode.set('n:' + norm(r.name), r.brand); }
   }
-  const ws = { byBrand: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0 };
+  const ws = { byBrand: {}, bySection: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0 };
   const cats = {};
   for (const b of BRANDS) ws.byBrand[b.id] = { qty: 0, rev: 0, imp: 0 };
   for (const f of S.sales) {
@@ -704,7 +731,13 @@ function compute() {
       const isWs = center === 'wholesale';
       let unit = costByCode.get(norm(r.code));
       if (unit == null) unit = costByName.get(norm(r.name));
+      const sec = unit == null ? matchSection(`${r.name} ${r.category || ''}`) : null;
+      if (sec) unit = sec.isCarton ? sec.carton : sec.piece;
       const whv = unit != null ? unit * r.qty : null;
+      if (sec && !isWs) {
+        const Q = ws.bySection[sec.name] = ws.bySection[sec.name] || { qty: 0, imp: 0, wh: 0, sales: 0 };
+        Q.qty += r.qty; Q.wh += unit * r.qty; Q.sales += r.sales; Q.imp += r.bookCost ?? 0;
+      }
       if (unit == null && !isWs) { const k = `${r.code}|${r.name}`; ws.unmatched[k] = ws.unmatched[k] || { code: r.code, name: r.name, brand: bid, qty: 0, sales: 0 }; ws.unmatched[k].qty += r.qty; ws.unmatched[k].sales += r.sales; }
       let imp = r.bookCost;
       if (imp == null) { ws.missingImport.add(center); imp = whv ?? 0; }
@@ -1137,6 +1170,13 @@ function renderWholesale() {
     t += `<tr class="sum"><td>الإجمالي</td>${BRANDS.map(b => `<td class="n">${fmt(ws.byBrand[b.id].qty)}</td>`).join('')}<td class="n">${money(tot.sales)}</td><td class="n">${money(tot.imp)}</td><td class="n"></td><td class="n">${signed(tot.wh - tot.imp)}</td><td class="n"></td></tr></tbody></table>`;
     $('#wsMatrix').innerHTML = t;
   }
+  const tq = { qty: 0, imp: 0, wh: 0 };
+  matchSection('');
+  $('#wsSections').innerHTML = `<table><thead><tr><th>القسم</th><th class="n">سعر الجملة</th><th class="n">الكمية المباعة في المتاجر</th><th class="n">تكلفة الاستيراد</th><th class="n">تكلفة الجملة</th><th class="n">ربح الجملة</th></tr></thead><tbody>${WS_SECTIONS.map(sec => {
+    const Q = ws.bySection[sec.name] || { qty: 0, imp: 0, wh: 0 };
+    tq.qty += Q.qty; tq.imp += Q.imp; tq.wh += Q.wh;
+    return `<tr${Q.qty ? '' : ' style="color:var(--muted)"'}><td>${esc(sec.name)}</td><td class="n num">${fmt(sec.isCarton ? sec.carton : sec.piece, 2)}${sec.isCarton ? ' / كرتون' : ''}</td><td class="n">${fmt(Q.qty)}</td><td class="n">${money(Q.imp)}</td><td class="n">${money(Q.wh)}</td><td class="n">${Q.qty ? signed(Q.wh - Q.imp) : '—'}</td></tr>`;
+  }).join('')}<tr class="sum"><td>الإجمالي</td><td></td><td class="n">${fmt(tq.qty)}</td><td class="n">${money(tq.imp)}</td><td class="n">${money(tq.wh)}</td><td class="n">${signed(tq.wh - tq.imp)}</td></tr></tbody></table>`;
   const un = Object.values(ws.unmatched);
   $('#wsUnmatchedCard').hidden = !un.length;
   if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الكود</th><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.code)}</td><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td></tr>`).join('')}</tbody></table>`;
@@ -1149,7 +1189,8 @@ function renderInputs() {
   st('up-orders', OF.length ? OF.map((f, i) => `<div class="file-row"><span class="badge ok">✓ ${esc(f.fileName)}</span> ${CMAP[f.center]?.name || 'حسب عمود المتجر'} · <span class="num">${fmt(f.rows.length)}</span> طلب <button class="btn small" data-rmo="${i}">حذف</button></div>`).join('') : '<span class="badge">لم يُرفع</span>');
   $('#up-orders .status').querySelectorAll('[data-rmo]').forEach(b => b.onclick = () => { S.orders.files.splice(+b.dataset.rmo, 1); if (!S.orders.files.length) S.orders = null; refresh(); });
   const CT = S.demo ? S.costs : store.costs;
-  st('up-costs', CT ? `<span class="badge ok">✓ ${esc(CT.fileName)}</span> <span class="num">${fmt(CT.rows.length)}</span> صنف${S.demo ? '' : ' · محفوظة لكل الأشهر'}` : '<span class="badge">لم يُرفع</span>');
+  $('#wsListCount').textContent = WS_SECTIONS.length;
+  st('up-costs', `<span class="badge ok">✓ قائمة الأقسام (${WS_SECTIONS.length})</span>` + (CT ? ` <span class="badge ok">✓ ${esc(CT.fileName)}</span> <span class="num">${fmt(CT.rows.length)}</span> صنف` : ''));
   st('up-sales', S.sales.length ? S.sales.map((f, i) => `<div class="file-row"><span class="badge ok">✓ ${esc(f.fileName)}</span> ${CMAP[f.center]?.name || 'حسب عمود المتجر'} · <span class="num">${fmt(f.rows.length)}</span> صف <button class="btn small" data-rm="${i}">حذف</button></div>`).join('') : '<span class="badge">لم يُرفع</span>');
   $('#up-sales .status').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.sales.splice(+b.dataset.rm, 1); raw.sales?.splice(+b.dataset.rm, 1); refresh(); });
 
@@ -1273,9 +1314,9 @@ function demoMonth(monthKey, k = 1) {
 
   // Items: [code, name, category, brand, import cost, retail price]
   const items = [
-    ['KN-01', 'كانيفا طعام قطط جاف بالسلمون 2كجم', 'اكل قطط جاف', 'كانيفا', 38, 59], ['KN-02', 'كانيفا اكل رطب قطط دجاج', 'اكل رطب قطط', 'كانيفا', 4.5, 8],
-    ['RR-01', 'رون رون رمل قطط 10لتر', 'رمل', 'رون رون', 18, 32], ['SH-01', 'شيرمان طعام كلاب جاف 3كجم', 'اكل كلاب جاف', 'شيرمان', 55, 85],
-    ['CD-01', 'كاندي مكافآت قطط سائلة', 'مكافئات وفيتامينات قطط', 'كاندي', 6, 12],
+    ['KN-01', 'كانيفا جاف سلمون 1 كجم', 'اكل قطط جاف', 'كانيفا', 36, 59], ['KN-02', 'كانيفا رطب دجاج 70جم', 'اكل رطب قطط', 'كانيفا', 3.1, 5.5],
+    ['RR-01', 'رون رون رطب تونة 75 جم', 'اكل رطب قطط', 'رون رون', 3.3, 6], ['SH-01', 'شيرمان مكافآت 60 جم', 'مكافئات وفيتامينات قطط', 'شيرمان', 5.4, 9.5],
+    ['CD-01', 'كاندي رطب دجاج', 'اكل رطب قطط', 'كاندي', 2.4, 4.5],
     ['G-01', 'اكل رطب قطط تونة', 'اكل رطب قطط', '', 3.2, 6], ['G-02', 'اكل قطط جاف 1.5كجم', 'اكل قطط جاف', '', 28, 45], ['G-03', 'رمل قطط برائحة اللافندر', 'رمل', '', 14, 25],
     ['G-04', 'فيتامينات قطط', 'مكافئات وفيتامينات قطط', '', 15, 28], ['G-05', 'وعاء طعام', 'مستلزمات الاكل', '', 9, 19], ['G-06', 'مجرفة رمل', 'مستلزمات الرمل', '', 6, 14],
     ['G-07', 'شامبو قطط', 'مستلزمات العنايه', '', 12, 24], ['G-08', 'لعبة قطط فأر', 'العاب', '', 3, 10], ['G-09', 'خداشة قطط', 'خداشات', '', 35, 69],
@@ -1284,7 +1325,7 @@ function demoMonth(monthKey, k = 1) {
   // monthly sales by category for Hamtaro (from the report)
   const catBase = { 'اكل رطب قطط': 127000, 'اكل قطط جاف': 71700, 'رمل': 26000, 'مكافئات وفيتامينات قطط': 15200, 'مستلزمات الاكل': 2700,
     'مستلزمات الرمل': 2500, 'مستلزمات العنايه': 2300, 'العاب': 1230, 'خداشات': 860, 'اكل طيور': 810, 'بيوت اكواخ': 945, 'اكل كلاب جاف': 670, 'اكل كلاب رطب': 400 };
-  const brandShare = { 'اكل رطب قطط': 0.08, 'اكل قطط جاف': 0.2, 'رمل': 0.35, 'مكافئات وفيتامينات قطط': 0.4, 'اكل كلاب جاف': 0.9 };
+  const brandShare = { 'اكل رطب قطط': 0.06, 'اكل قطط جاف': 0.2, 'مكافئات وفيتامينات قطط': 0.4 };
 
   const salesFiles = [], salesTot = {}, costTot = {};
   for (const ce of CENTERS) {
@@ -1340,7 +1381,7 @@ function applyDemo(d, k) {
   const S2 = blankMonth(); S2.demo = true; S2.k = k;
   S2.is = { fileName: 'قائمة الدخل (تجريبي).xlsx', rows: parseIS(d.isAoa).rows };
   S2.orders = { files: [{ fileName: 'طلبات المتاجر (تجريبي).xlsx', center: null, rows: parseTable('orders', d.ordersAoa).rows }] };
-  S2.costs = { fileName: 'أسعار الجملة (تجريبي).xlsx', rows: parseTable('costs', d.costsAoa).rows };
+  S2.costs = null;   // the built-in product-line list applies
   S2.sales = d.salesFiles.map(f => ({ fileName: f.name, center: f.center, rows: parseTable('sales', f.aoa).rows }));
   return S2;
 }
