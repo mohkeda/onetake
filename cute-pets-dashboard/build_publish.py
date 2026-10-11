@@ -1,0 +1,16 @@
+# Bakes real months into a publish-only copy of the dashboard (kept out of the git repo).
+import json, sys
+src, seed_json, out = sys.argv[1:4]
+d = json.load(open(seed_json))
+r2 = lambda v: round(v, 2) if isinstance(v, float) else v
+compact = {
+  'is': {'f': d['is']['fileName'], 'r': [[x['account'], x['center'], r2(x['amount']), x.get('group')] for x in d['is']['rows']]},
+  'orders': [{'f': f['fileName'], 'c': f['center'], 'r': [[1 if o['city'] == 'Riyadh' else 0, r2(o['fee']), int(o['cancelled']), int(o['pickup'])] for o in f['rows']]} for f in d['orders']['files']],
+  'sales': [{'f': f['fileName'], 'c': f['center'], 'r': [[x['name'], x['brand'].strip(), r2(x['qty']), r2(x['sales']), r2(x['bookCost'])] for x in f['rows']]} for f in d['sales']],
+  'cls': d.get('cls') or {},
+}
+html = open(src, encoding='utf-8').read()
+seed = json.dumps({'2026-09': compact}, ensure_ascii=False, separators=(',', ':'))
+assert html.count('/*SEED*/null/*END*/') == 1
+open(out, 'w', encoding='utf-8').write(html.replace('/*SEED*/null/*END*/', '/*SEED*/' + seed + '/*END*/'))
+print('seed bytes', len(seed.encode()))

@@ -396,7 +396,16 @@ const CATS = {
   pack:     'تغليف (يُوزَّع)',
   ignore:   'تجاهل',
 };
-const LS_KEY = 'cutepets-dashboard-v2';
+const LS_KEY = 'cutepets-dashboard-v3';
+// Real months baked into the published page (never into the repository); see build_publish.py.
+const SEED_MONTHS = /*SEED*/null/*END*/;
+function expandSeed(d) {
+  // compact form: sales rows [name, brand, qty, sales, importCost], orders [riyadh, fee, cancelled, pickup]
+  return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
+    orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cancelled: !!ca, pickup: !!pu })) })) },
+    sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost]) => ({ store: '', code: '', name, brand, category: '', qty, sales, bookCost })) })),
+    costs: null, cls: d.cls || {}, demo: false, k: 1 };
+}
 
 /* ---------- helpers ---------- */
 const $ = s => document.querySelector(s);
@@ -1553,7 +1562,18 @@ $('#importBackup').onchange = async e => {
 const startMonth = store.lastMonth || curMonth();
 $('#month').value = startMonth;
 const hasAny = Object.keys(store.months).length || Object.keys(store.history).length;
-if (!hasAny) loadDemo(); else openMonth(startMonth);
+if (SEED_MONTHS) {
+  $('#loadDemo').hidden = true;   // real data is in: no demo button that could overwrite a month
+  // install the real months once; months the viewer uploaded themselves are never overwritten
+  for (const [m, d] of Object.entries(SEED_MONTHS)) {
+    if (store.months[m]?.data) continue;
+    store.months[m] = { data: expandSeed(d) };
+    S = store.months[m].data; store.history[m] = summary(compute());
+  }
+  persist();
+  openMonth(store.lastMonth && store.months[store.lastMonth] ? store.lastMonth : Object.keys(SEED_MONTHS).sort().pop());
+  $('#month').value = store.lastMonth;
+} else if (!hasAny) loadDemo(); else openMonth(startMonth);
 { let t = 'results'; try { t = sessionStorage.getItem('cp-tab') || t; } catch (e) {} showTab(document.querySelector(`.tab[data-tab="${t}"]`) || $('.tab[data-tab="results"]')); }
 if (typeof XLSX === 'undefined') toast('تعذّر تحميل قارئ ملفات Excel، تحقق من الاتصال');
 })();
