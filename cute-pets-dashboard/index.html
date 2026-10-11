@@ -420,10 +420,10 @@ const LS_KEY = 'cutepets-dashboard-v4';
 // Real months baked into the published page (never into the repository); see build_publish.py.
 const SEED_MONTHS = /*SEED*/null/*END*/;
 function expandSeed(d) {
-  // compact form: sales rows [name, brand, qty, sales, importCost], orders [riyadh, fee, cancelled, pickup]
+  // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup]
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cancelled: !!ca, pickup: !!pu })) })) },
-    sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost]) => ({ store: '', code: '', name, brand, category: '', qty, sales, bookCost })) })),
+    sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost, category = '', store = '', service = 0]) => ({ store, code: '', name, brand, category, qty, sales, bookCost, service: !!service })) })),
     payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost], i) => ({ name: `موظف ${i + 1}`, cc, note, cost })) } : null,
     costs: null, cls: d.cls || {}, demo: false, k: 1 };
 }
