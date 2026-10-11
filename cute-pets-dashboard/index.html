@@ -314,6 +314,15 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
       </div>
 
       <div class="card">
+        <div class="card-head"><h2>المصاريف الثابتة الشهرية</h2><p>تُحتسب كل شهر، وتحل محل نفس الحسابات في قائمة الدخل من إدارة (إيجار الجملة يبقى من إدارة)</p></div>
+        <div class="settings" style="margin-bottom:10px">
+          <div class="field"><label for="setFixedAlloc">من يتحملها</label>
+            <select id="setFixedAlloc"><option value="main">الرئيسي (تُوزَّع مع مصاريف الرئيسي)</option><option value="five">5 مراكز بالتساوي</option><option value="three">3 متاجر بالتساوي</option></select></div>
+        </div>
+        <div class="table-wrap" id="fixedTable"></div>
+      </div>
+
+      <div class="card">
         <div class="card-head"><h2>تصنيف حسابات قائمة الدخل</h2><p>صُنِّفت تلقائيًا حسب اسم الحساب، غيّر التصنيف إن لزم</p></div>
         <div class="table-wrap" id="clsTable"></div>
       </div>
@@ -479,7 +488,7 @@ function classify(account, group) {
 const SUBTOTAL = /(^|\s)(اجمالي|مجموع|صافي الربح|صافي الدخل|مجمل الربح|صافي الخساره|total|net income|gross profit)(\s|$)/;
 
 /* ---------- state ---------- */
-const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsMode: 'transfer', mainBasis: 'sales', mainKeep: 'حكومي', fuelManual: '', packManual: '' };
+const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsMode: 'transfer', fixedAlloc: 'main', mainBasis: 'sales', mainKeep: 'حكومي', fuelManual: '', packManual: '' };
 let store = { months: {}, history: {}, settings: { ...DEFAULT_SETTINGS }, lastMonth: null };
 let S = blankMonth();
 let raw = {};           // parsed sheets kept in memory for re-mapping: { is, orders, costs, sales:[...] }
@@ -684,6 +693,21 @@ function parseTable(kind, aoa, mapOverride) {
   return { rows, map };
 }
 
+/* ---------- fixed monthly expenses ---------- */
+// [name, monthly amount, Edara accounts it replaces (normalized pattern)]. Wholesale rent is its own
+// expense and stays as booked in Edara.
+const FIXED_DEFAULT = [
+  ['التامينات الاجتماعية', 2106.76, 'تامينات'], ['الايجار', 5208.33, 'ايجار'], ['نثريه', 10, 'نثري'],
+  ['مصاريف الإقامة وكارت العمل', 3304.14, 'اقام|كارت العمل|مكتب العمل'], ['مصاريف برنامج اداره', 180.41, 'برنامج'],
+  ['ترخيص الاستثمار', 0, 'ترخيص'], ['استضافه مواقع', 29.08, 'استضاف'], ['رسوم البلديه', 103.91, 'بلدي'],
+  ['رسوم قوى', 61.1, 'قوي|قوى'], ['رسوم مقيم', 82.5, 'مقيم'], ['اتعاب المحاسب القانوني', 361.11, 'محاسب|اتعاب'],
+].map(([name, amount, re]) => ({ name, amount, re }));
+const fixedList = () => (store.settings.fixed || FIXED_DEFAULT);
+function fixedMatch(account, center) {
+  const t = norm(account);
+  return fixedList().find(f => f.re && new RegExp(f.re).test(t) && !(f.re === 'ايجار' && center === 'wholesale'));
+}
+
 /* ---------- payroll (rules come from the sheet's notes) ---------- */
 const PAY_LINES = { staff: 'الرواتب', mgmt: 'رواتب الإدارة', saudi: 'رواتب السعوديين (سعودة)' };
 function payrollAlloc(rows) {
@@ -725,6 +749,7 @@ function compute() {
   const hasPayroll = !!(S.payroll?.rows?.length);
   const pay = hasPayroll ? payrollAlloc(S.payroll.rows) : null;
   let salariesReplaced = 0;
+  const fixedReplaced = [];
   const revSum = isRows.filter(r => ['sales', 'other', 'delivery'].includes(S.cls[r.account] || classify(r.account, r.group))).reduce((a, r) => a + r.amount, 0);
   const flip = revSum < 0 ? -1 : 1;
   for (const r of isRows) {
@@ -733,6 +758,9 @@ function compute() {
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
     // salaries never come from Edara: they come only from the monthly payroll sheet
     if (/رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
+    // fixed monthly expenses come from the fixed list, not from Edara
+    const fx = (cat === 'admin' || cat === 'expense') && fixedMatch(r.account, r.center);
+    if (fx) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: fx.name }); continue; }
     x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a });
     if (cat === 'sales') x.salesRev += a;
     else if (cat === 'contra') x.salesRev -= Math.abs(a);
@@ -751,6 +779,14 @@ function compute() {
     }
   }
 
+  if (isRows.length) {
+    const targets = set.fixedAlloc === 'five' ? CENTERS.filter(ce => !ce.shared).map(ce => ce.id)
+      : set.fixedAlloc === 'three' ? CENTERS.filter(ce => ce.delivery).map(ce => ce.id) : ['main'];
+    for (const f of fixedList()) if (f.amount) for (const cid of targets) {
+      const v = f.amount / targets.length;
+      c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
+    }
+  }
   if (pay) for (const [cid, B] of Object.entries(pay.byCenter)) for (const k of ['staff', 'mgmt', 'saudi']) if (B[k]) {
     c[cid].admin += B[k]; c[cid].lines.push({ account: PAY_LINES[k], cat: 'admin', amount: B[k] });
   }
@@ -898,7 +934,7 @@ function compute() {
       CENTERS.forEach(ce => finalize(c[ce.id]));
     }
   }
-  R = { c, ws, cats, mode, mainAllocated, pay, salariesReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, cats, mode, mainAllocated, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -1326,6 +1362,18 @@ function renderInputs() {
   st('up-sales', S.sales.length ? S.sales.map((f, i) => `<div class="file-row"><span class="badge ok">✓ ${esc(f.fileName)}</span> ${CMAP[f.center]?.name || 'حسب عمود المتجر'} · <span class="num">${fmt(f.rows.length)}</span> صف <button class="btn small" data-rm="${i}">حذف</button></div>`).join('') : '<span class="badge">لم يُرفع</span>');
   $('#up-sales .status').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.sales.splice(+b.dataset.rm, 1); raw.sales?.splice(+b.dataset.rm, 1); refresh(); });
 
+  // fixed expenses: editable amounts, and the Edara lines they replaced this month
+  const FL = fixedList(), FR = R.fixedReplaced || [];
+  $('#fixedTable').innerHTML = `<table><thead><tr><th>المصروف</th><th class="n">المبلغ الشهري</th><th>يحل محل (من إدارة هذا الشهر)</th></tr></thead><tbody>${FL.map((f, i) => {
+    const rep = FR.filter(x => x.by === f.name);
+    return `<tr><td>${esc(f.name)}</td><td class="n"><input type="number" step="0.01" min="0" data-fx="${i}" value="${f.amount}" style="width:120px" aria-label="مبلغ ${esc(f.name)}"></td><td>${rep.length ? rep.map(x => `${esc(x.account)} · ${CMAP[x.center].short} <span class="num">${money(x.amount)}</span>`).join('، ') : '—'}</td></tr>`;
+  }).join('')}<tr class="sum"><td>الإجمالي</td><td class="n">${money(FL.reduce((a, f) => a + (+f.amount || 0), 0))}</td><td>${FR.length ? `استُبعد من إدارة ${money(FR.reduce((a, x) => a + x.amount, 0))}` : ''}</td></tr></tbody></table>`;
+  $('#fixedTable').querySelectorAll('[data-fx]').forEach(inp => inp.onchange = () => {
+    const list = fixedList().map(f => ({ ...f }));
+    list[+inp.dataset.fx].amount = +inp.value || 0;
+    store.settings.fixed = list; persist(); refresh();
+  });
+
   // classification table
   const accts = {}, groups = {};
   for (const r of S.is?.rows || []) {
@@ -1608,6 +1656,7 @@ bindSetting('#setRiyadh', 'riyadh');
 bindSetting('#setDelivery', 'deliverySource');
 bindSetting('#setWsMode', 'wsMode');
 bindSetting('#setMainBasis', 'mainBasis');
+bindSetting('#setFixedAlloc', 'fixedAlloc');
 bindSetting('#setMainKeep', 'mainKeep');
 bindSetting('#fuelManual', 'fuelManual', 'input');
 bindSetting('#packManual', 'packManual', 'input');
