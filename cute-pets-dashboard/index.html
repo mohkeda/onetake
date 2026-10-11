@@ -240,7 +240,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <div id="chartBrands"></div>
         </div>
         <div class="card">
-          <div class="card-head"><h2>تقرير مبيعات الجملة</h2><p>الجملة تبيع للمتاجر والمحل بسعر الجملة؛ ربحها = سعر الجملة − تكلفة الاستيراد</p></div>
+          <div class="card-head"><h2>تقرير مبيعات الجملة</h2><p>الجملة تبيع للمتاجر والمحل بسعر الجملة (ربحها = سعر الجملة − تكلفة الاستيراد)، وعمود «الجملة» يظهر في الشهر الذي فيه مبيعات مباشرة لعملاء الجملة</p></div>
           <div class="table-wrap" id="wsMatrix"></div>
         </div>
         <div class="card">
@@ -1163,7 +1163,8 @@ function renderWholesale() {
   }), [{ key: 'cost', label: 'تكلفة الاستيراد', color: '--cost' }, { key: 'gp', label: 'ربح الجملة', color: '--s3' }], { label: 'براندات الجملة' });
 
   // "تقرير مبيعات الجملة" in the layout of the old Excel report
-  const cols = ['cpstore', 'hamtaro', 'wagy', 'exhibit'].map(id => ({ id, label: { exhibit: 'المحل (المعرض)', cpstore: 'كيوت', hamtaro: 'هامتارو', wagy: 'واجي', wholesale: 'الجملة' }[id] }));
+  // direct wholesale customers get their own column only in a month that has them
+  const cols = ['cpstore', 'hamtaro', 'wagy', 'exhibit', ...(ws.matrix.wholesale ? ['wholesale'] : [])].map(id => ({ id, label: { exhibit: 'المحل (المعرض)', cpstore: 'كيوت', hamtaro: 'هامتارو', wagy: 'واجي', wholesale: 'الجملة' }[id] }));
   if (!Object.keys(ws.matrix).length) { $('#wsMatrix').innerHTML = '<div class="empty">ارفع تقارير المبيعات من تبويب المدخلات</div>'; }
   else {
     const cell = (id, b, k) => { const v = ws.matrix[id]?.[b]; if (!v) return 0; return k === 'wh' && id === 'wholesale' ? v.sales : v[k]; };
@@ -1182,7 +1183,7 @@ function renderWholesale() {
     t += rowOf('اجمالي الربح', id => sumB(id, 'wh') - sumB(id, 'imp'), 'rep-profit');
     t += '</tbody></table>';
     // retail side: the store's own sales of the brands against what it paid wholesale
-    const sc = cols;
+    const sc = cols.filter(c => c.id !== 'wholesale');
     const rowS = (label, f, cls = '', d = 2) => { const vals = sc.map(c => f(c.id)); return `<tr class="${cls}"><td>${label}</td>${vals.map(v => `<td class="n">${fmt(v, d)}</td>`).join('')}<td class="n">${fmt(vals.reduce((a, b) => a + b, 0), d)}</td></tr>`; };
     t += `<table class="rep" style="margin-top:14px"><thead><tr><th>اجمالي مبيعات المتجر</th>${sc.map(c => `<th class="n">${c.label}</th>`).join('')}<th class="n">الإجمالي</th></tr></thead><tbody>`;
     for (const b of used) t += rowS(b.name, id => cell(id, b.id, 'sales'), 'rep-store');
