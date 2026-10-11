@@ -204,7 +204,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
 
     <!-- CENTER PAGE: one tab per sales center -->
     <section class="panel" id="tab-center" hidden>
-      <div class="center-head"><i class="dot big" id="cDot"></i><h2 id="stTitle"></h2></div>
+      <div class="center-head"><i class="dot big" id="cDot"></i><h2 id="stTitle"></h2><span class="badge" id="payWarn" hidden>⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب</span></div>
       <div class="kpis" id="cKpis"></div>
       <div class="grid-2">
         <div class="card">
@@ -283,7 +283,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         </div>
         <div class="card up" id="up-payroll">
           <h3>٥. كشف الرواتب (شهري)</h3>
-          <ul><li>الاسم، اجمالي الراتب + الإضافي، الجزاءات/التأخيرات/الغياب، الملاحظات، مركز التكلفة</li><li>يحل محل حسابات الرواتب في قائمة الدخل، ويُوزَّع حسب الملاحظات</li></ul>
+          <ul><li>الاسم، اجمالي الراتب + الإضافي، الجزاءات/التأخيرات/الغياب، الملاحظات، مركز التكلفة</li><li>الرواتب تُحسب من هذا الكشف فقط (حسابات الرواتب في إدارة لا تُحتسب)، وتُوزَّع حسب الملاحظات</li></ul>
           <label class="drop" for="file-payroll">اسحب الملف هنا أو اضغط للاختيار</label>
           <input type="file" id="file-payroll" accept=".xlsx,.xls,.csv" hidden>
           <div class="status"></div><div class="table-wrap" id="payrollSummary"></div><div class="map" id="map-payroll"></div>
@@ -731,7 +731,8 @@ function compute() {
     const cat = S.cls[r.account] || classify(r.account, r.group);
     const a = r.amount * flip, x = c[r.center];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
-    if (hasPayroll && /رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
+    // salaries never come from Edara: they come only from the monthly payroll sheet
+    if (/رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
     x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a });
     if (cat === 'sales') x.salesRev += a;
     else if (cat === 'contra') x.salesRev -= Math.abs(a);
@@ -897,7 +898,7 @@ function compute() {
       CENTERS.forEach(ce => finalize(c[ce.id]));
     }
   }
-  R = { c, ws, cats, mode, mainAllocated, pay, salariesReplaced, xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, cats, mode, mainAllocated, pay, salariesReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -1112,6 +1113,7 @@ function renderResults() {
   t += '</tbody></table>';
   $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
   const notes = [];
+  if (r.payrollMissing) notes.push('⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
   if (r.mainAllocated) notes.push(`مصاريف الرئيسي موزعة ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}${store.settings.mainKeep ? ` ما عدا: ${store.settings.mainKeep}` : ''}`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
@@ -1143,6 +1145,7 @@ function renderStatement() {
   const [y, m] = mo.split('-').map(Number);
   $('#stTitle').textContent = `النتائج الشهرية لـ${ce.name} عن شهر ${m}/${y}`;
   $('#cDot').style.background = `var(${ce.color})`;
+  $('#payWarn').hidden = !R.payrollMissing;
 
   // KPIs with the change from the previous saved month
   const prevKey = Object.keys(store.history).filter(k => k < mo).sort().pop();
@@ -1312,7 +1315,7 @@ function renderInputs() {
   const CT = S.demo ? S.costs : store.costs;
   $('#wsListCount').textContent = WS_SECTIONS.length;
   st('up-costs', `<span class="badge ok">✓ قائمة الأقسام (${WS_SECTIONS.length})</span>` + (CT ? ` <span class="badge ok">✓ ${esc(CT.fileName)}</span> <span class="num">${fmt(CT.rows.length)}</span> صنف` : ''));
-  st('up-payroll', S.payroll ? `<span class="badge ok">✓ ${esc(S.payroll.fileName)}</span> <span class="num">${fmt(S.payroll.rows.length)}</span> موظف <button class="btn small" id="rmPayroll">حذف</button>` : '<span class="badge">لم يُرفع</span>');
+  st('up-payroll', S.payroll ? `<span class="badge ok">✓ ${esc(S.payroll.fileName)}</span> <span class="num">${fmt(S.payroll.rows.length)}</span> موظف <button class="btn small" id="rmPayroll">حذف</button>` : `<span class="badge">لم يُرفع: الرواتب غير محتسبة${R.salariesReplaced ? ` (رواتب إدارة المستبعدة ${money(R.salariesReplaced)})` : ''}</span>`);
   if ($('#rmPayroll')) $('#rmPayroll').onclick = () => { S.payroll = null; refresh(); };
   if (R.pay) {
     const P = R.pay.byCenter, ids = CENTERS.filter(ce => P[ce.id]);
