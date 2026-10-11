@@ -230,6 +230,16 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         <div class="card-head"><h2>المبيعات حسب التصنيف</h2><p>من عمود التصنيف في تقرير المبيعات، أو العلامة التجارية إن لم يوجد</p></div>
         <div class="table-wrap" id="stCats"></div>
       </div>
+      <div class="card" id="cBeCard" hidden>
+        <div class="card-head"><h2>ربحية التصنيفات ونقطة التعادل</h2><p>التكلفة بمتوسط تكلفة الصنف من تقرير المبيعات؛ براندات الجملة بسعر الجملة</p></div>
+        <div class="kpis" id="beKpis" style="margin-bottom:14px"></div>
+        <div class="table-wrap" id="beTable"></div>
+        <div class="controls" style="margin-top:10px">
+          <button class="btn small" id="beCurrent">المزيج الحالي</button>
+          <button class="btn small" id="beSuggest">المزيج المقترح</button>
+          <span class="note" id="beNote" style="padding:4px 10px"></span>
+        </div>
+      </div>
       <div class="card" id="cSvcCard" hidden>
         <div class="card-head"><h2>إيرادات الخدمات</h2><p id="cSvcNote">من تقرير المبيعات المجمع</p></div>
         <div class="table-wrap" id="cSvc"></div>
@@ -877,7 +887,7 @@ function compute() {
     if (r.name) { costByName.set(norm(r.name), r.cost); if (r.brand && !r.code) brandByCode.set('n:' + norm(r.name), r.brand); }
   }
   const ws = { byBrand: {}, bySection: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0 };
-  const cats = {}, svcs = {}, ratioAcc = {}, pending = [];
+  const cats = {}, catCost = {}, svcs = {}, ratioAcc = {}, pending = [];
   for (const b of BRANDS) ws.byBrand[b.id] = { qty: 0, rev: 0, imp: 0 };
   for (const f of S.sales) {
     for (const r of f.rows) {
@@ -885,9 +895,10 @@ function compute() {
       if (r.service) { svcs[center] = svcs[center] || {}; svcs[center][r.name] = (svcs[center][r.name] || 0) + r.sales; continue; }
       const catKey = r.category || r.brand.trim();
       if (catKey) { cats[center] = cats[center] || {}; cats[center][catKey] = (cats[center][catKey] || 0) + r.sales; }
+      const addCatCost = v => { if (catKey) { catCost[center] = catCost[center] || {}; catCost[center][catKey] = (catCost[center][catKey] || 0) + v; } };
       const brandTxt = r.brand || brandByCode.get(norm(r.code)) || brandByCode.get('n:' + norm(r.name)) || '';
       const bid = matchBrand(brandTxt) || matchBrand(r.name);
-      if (!bid) continue;
+      if (!bid) { addCatCost(r.bookCost || 0); continue; }
       const isWs = center === 'wholesale';
       let unit = costByCode.get(norm(r.code));
       if (unit == null) unit = costByName.get(norm(r.name));
@@ -905,6 +916,7 @@ function compute() {
       ws.matrix[center] = ws.matrix[center] || {};
       const M = ws.matrix[center][bid] = ws.matrix[center][bid] || { qty: 0, sales: 0, imp: 0, wh: 0 };
       M.qty += r.qty; M.sales += r.sales; M.imp += imp; M.wh += wh;
+      addCatCost(isWs || mode !== 'transfer' ? imp : wh);   // a store carries wholesale brands at the wholesale price
       const rev = isWs ? r.sales : wh;   // what wholesale earns on this row
       const B = ws.byBrand[bid]; B.qty += r.qty; B.rev += rev; B.imp += imp;
       ws.rev += rev; ws.imp += imp; ws.qty += r.qty;
@@ -968,7 +980,7 @@ function compute() {
       CENTERS.forEach(ce => finalize(c[ce.id]));
     }
   }
-  R = { c, ws, cats, svcs, mode, mainAllocated, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, cats, catCost, svcs, mode, mainAllocated, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -1247,6 +1259,8 @@ function renderStatement() {
   $('#cDelCard').hidden = !dl.length;
   $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
 
+  renderBreakeven(ce, x);
+
   // services (grooming, play area, delivery …) from the combined sales report
   const SV = R.svcs[stCenter];
   $('#cSvcCard').hidden = !SV;
@@ -1330,6 +1344,53 @@ function renderStatement() {
   }
   ct += `<tr class="sum"><td>الإجمالي</td>${cols.map(c => `<td class="n">${money(Object.values(c.data).reduce((a, b) => a + b, 0))}</td>`).join('')}<td></td></tr></tbody></table>`;
   $('#stCats').innerHTML = ct;
+}
+
+/* ---------- category profitability, break-even and sales mix ---------- */
+// Selling costs that move with sales (payment fees, discounts, delivery, packaging, fuel) are variable;
+// everything else in the center's expenses is fixed for the month.
+const VARIABLE_EXP = /تحصيل|تابي|تمارا|مدي|عموله|عمولات بوابات|خصم مسموح|توصيل|شحن|تغليف|محروقات/;
+const beMix = {};   // per center: { category: share } chosen in the simulator (this session only)
+function renderBreakeven(ce, x) {
+  const sales = R.cats[ce.id] || {}, cost = R.catCost[ce.id] || {};
+  const names = Object.keys(sales).filter(k => sales[k] > 0);
+  $('#cBeCard').hidden = !names.length || ce.id === 'wholesale';
+  if ($('#cBeCard').hidden) return;
+  const S = names.reduce((a, k) => a + sales[k], 0), C = names.reduce((a, k) => a + (cost[k] || 0), 0);
+  const varExp = x.fuelAlloc + x.packAlloc + x.lines.filter(l => l.cat === 'expense' && VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
+  const vr = varExp / S;
+  const otherIncome = x.revenue - x.revMain - x.revBrand;                    // delivery, services, other income
+  const fixed = x.totalExp - x.cogs - varExp - otherIncome;                  // what the goods margin must cover
+  const cm = k => (sales[k] - (cost[k] || 0)) / sales[k] - vr;              // contribution margin % per category
+  const share = k => sales[k] / S;
+  const be = mix => { const w = names.reduce((a, k) => a + (mix[k] || 0), 0); const r = names.reduce((a, k) => a + (mix[k] || 0) * cm(k), 0) / (w || 1); return { cmr: r, be: r > 0 ? fixed / r : Infinity }; };
+  const current = Object.fromEntries(names.map(k => [k, share(k)]));
+  // suggested mix: move a fifth of the share of the weaker half (by contribution) to the stronger half
+  const sorted = names.slice().sort((a, b) => cm(b) - cm(a)), half = Math.ceil(sorted.length / 2);
+  const top = sorted.slice(0, half), low = sorted.slice(half);
+  const moved = low.reduce((a, k) => a + current[k] * 0.2, 0), topShare = top.reduce((a, k) => a + current[k], 0) || 1;
+  const suggested = Object.fromEntries(names.map(k => [k, low.includes(k) ? current[k] * 0.8 : current[k] + moved * current[k] / topShare]));
+  const mix = beMix[ce.id] || current;
+  const now = be(current), sim = be(mix);
+  const kpi = (l, v, sub, bad) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${bad ? 'neg' : ''}">${v}</div><div class="sub">${sub}</div></div>`;
+  $('#beKpis').innerHTML =
+    kpi('مبيعات البضاعة', money(S), `هامش المساهمة <span class="num">${fmt(now.cmr * 100, 1)}%</span>`) +
+    kpi('التكاليف الثابتة الصافية', money(fixed), `بعد إيرادات الخدمات والتوصيل <span class="num">${money(otherIncome)}</span>`) +
+    kpi('مبيعات نقطة التعادل', isFinite(now.be) ? money(now.be) : '—', `بالمزيج الحالي · المتغيرة <span class="num">${fmt(vr * 100, 1)}%</span> من المبيعات`, now.be > S) +
+    kpi('هامش الأمان', isFinite(now.be) ? `${fmt((S - now.be) / S * 100, 1)}%` : '—', S >= now.be ? 'المبيعات فوق نقطة التعادل' : 'المبيعات تحت نقطة التعادل', S < now.be);
+  const rows = sorted.map(k => {
+    const gp = sales[k] - (cost[k] || 0);
+    return `<tr><td>${esc(k)}</td><td class="n">${money(sales[k])}</td><td class="n">${money(cost[k] || 0)}</td><td class="n">${signed(gp)}</td><td class="n num">${pct(gp, sales[k])}</td><td class="n num ${cm(k) < 0 ? 'neg' : ''}">${fmt(cm(k) * 100, 1)}%</td><td class="n num">${fmt(share(k) * 100, 1)}%</td><td class="n"><input type="number" step="0.5" min="0" data-mix="${esc(k)}" value="${fmt((mix[k] || 0) * 100, 1).replace(/,/g, '')}" style="width:76px" aria-label="حصة ${esc(k)} في المزيج"></td></tr>`;
+  }).join('');
+  const gpT = S - C;
+  $('#beTable').innerHTML = `<table><thead><tr><th>التصنيف</th><th class="n">المبيعات</th><th class="n">التكلفة</th><th class="n">مجمل الربح</th><th class="n">الهامش</th><th class="n">هامش المساهمة</th><th class="n">الحصة الحالية</th><th class="n">حصة المزيج %</th></tr></thead><tbody>${rows}<tr class="sum"><td>الإجمالي</td><td class="n">${money(S)}</td><td class="n">${money(C)}</td><td class="n">${signed(gpT)}</td><td class="n num">${pct(gpT, S)}</td><td class="n num">${fmt(now.cmr * 100, 1)}%</td><td class="n num">100%</td><td class="n num">${fmt(names.reduce((a, k) => a + (mix[k] || 0), 0) * 100, 1)}%</td></tr></tbody></table>`;
+  $('#beNote').innerHTML = mix === current ? 'عدّل «حصة المزيج» لترى أثرها على نقطة التعادل'
+    : `بالمزيج المعدّل: هامش المساهمة <b class="num">${fmt(sim.cmr * 100, 1)}%</b> ونقطة التعادل <b class="num">${isFinite(sim.be) ? money(sim.be) : '—'}</b> (${sim.be <= now.be ? 'أقل' : 'أعلى'} بـ <span class="num">${money(Math.abs(now.be - sim.be))}</span>)`;
+  $('#beTable').querySelectorAll('[data-mix]').forEach(inp => inp.onchange = () => {
+    beMix[ce.id] = { ...(beMix[ce.id] || current), [inp.dataset.mix]: (+inp.value || 0) / 100 }; renderBreakeven(ce, x);
+  });
+  $('#beCurrent').onclick = () => { delete beMix[ce.id]; renderBreakeven(ce, x); };
+  $('#beSuggest').onclick = () => { beMix[ce.id] = suggested; renderBreakeven(ce, x); };
 }
 
 const sumObj = (M, k) => Object.values(M).reduce((a, v) => a + (v[k] || 0), 0);
