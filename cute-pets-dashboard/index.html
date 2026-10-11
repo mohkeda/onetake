@@ -248,7 +248,7 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
           <div class="table-wrap" id="wsSections"></div>
         </div>
         <div class="card" id="wsUnmatchedCard" hidden>
-          <div class="card-head"><h2>أصناف بدون قسم في قائمة الجملة</h2><p>أصناف براندات بيعت في المتاجر ولم يُعرف قسمها من اسمها، فلم يُحسب عليها ربح للجملة. أضف لها سعرًا أو أرسل اسم القسم الصحيح</p></div>
+          <div class="card-head"><h2>أصناف بسعر جملة تقديري</h2><p>أصناف جملة ليس لها قسم في القائمة: سعرها = تكلفة الاستيراد × نسبة البراند هذا الشهر (سعر الجملة ÷ الاستيراد). أرسل سعرها لتثبيته</p></div>
           <div class="table-wrap" id="wsUnmatched"></div>
         </div>
       </div>
@@ -358,6 +358,8 @@ const WS_SECTIONS = [
   ['رون رون رطب 75 جم', 4, 4.00, 192.00], ['رون رون رطب كرتون 12×', 4, 4.00, 48.00], ['شيرمان رطب 70 جم', 2, 2.40, 115.20],
   ['شيرمان رطب 85 جم', 4, 2.40, 115.20], ['شيرمان مكافآت 60 جم', 5, 6.50, 312.00],
 ].map(([name, items, piece, carton]) => ({ name, items, piece, carton }));
+// other names a line also covers: Kaniva 370 g (dry) takes the 300 g price
+const WS_ALIASES = { 'كانيفا جاف 300 جم': ['كانيفا 370 جم'] };
 // tokens for matching an item name to a line: split digits from letters, unify weight units
 const mtok = s => {
   const t = String(s ?? '').toLowerCase()
@@ -374,9 +376,9 @@ const mtok = s => {
 // a line named after a product range (e.g. فيوجن) beats a generic type + size line
 const GENERIC_TOK = new Set(['كانيفا', 'كاندي', 'رون', 'شيرمان', 'رطب', 'جاف', 'مكافات', 'كرتون', 'جم', 'كجم']);
 function matchSection(text) {
-  if (!WS_SECTIONS[0].tokens) for (const sec of WS_SECTIONS) { sec.tokens = mtok(sec.name); sec.isCarton = sec.tokens.includes('كرتون'); }
+  if (!WS_SECTIONS[0].tokens) for (const sec of WS_SECTIONS) { sec.tokens = mtok(sec.name); sec.alts = (WS_ALIASES[sec.name] || []).map(mtok); sec.isCarton = sec.tokens.includes('كرتون'); }
   const have = new Set(mtok(text));
-  const hits = WS_SECTIONS.filter(sec => sec.tokens.every(t => have.has(t)));
+  const hits = WS_SECTIONS.filter(sec => [sec.tokens, ...sec.alts].some(tk => tk.every(t => have.has(t))));
   const named = hits.filter(sec => sec.tokens.some(t => !GENERIC_TOK.has(t) && !/^[\d.]+$/.test(t)));
   return (named.length ? named : hits).sort((x, y) => y.tokens.length - x.tokens.length)[0] || null;
 }
@@ -739,7 +741,7 @@ function compute() {
     if (r.name) { costByName.set(norm(r.name), r.cost); if (r.brand && !r.code) brandByCode.set('n:' + norm(r.name), r.brand); }
   }
   const ws = { byBrand: {}, bySection: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0 };
-  const cats = {};
+  const cats = {}, ratioAcc = {}, pending = [];
   for (const b of BRANDS) ws.byBrand[b.id] = { qty: 0, rev: 0, imp: 0 };
   for (const f of S.sales) {
     for (const r of f.rows) {
@@ -769,7 +771,19 @@ function compute() {
       const rev = isWs ? r.sales : wh;   // what wholesale earns on this row
       const B = ws.byBrand[bid]; B.qty += r.qty; B.rev += rev; B.imp += imp;
       ws.rev += rev; ws.imp += imp; ws.qty += r.qty;
+      if (!isWs) {
+        if (unit != null) { const A = ratioAcc[bid] = ratioAcc[bid] || { wh: 0, imp: 0 }; A.wh += wh; A.imp += imp; }
+        else pending.push({ M, B, imp, key: `${r.code}|${r.name}`, bid });
+      }
     }
+  }
+  // Brand items with no line in the list are still wholesale goods: price them at the brand's
+  // wholesale/import ratio this month, and flag them as estimated until a price is added.
+  for (const q of pending) {
+    const A = ratioAcc[q.bid], ratio = A && A.imp ? A.wh / A.imp : 1;
+    const extra = q.imp * (ratio - 1);
+    q.M.wh += extra; q.B.rev += extra; ws.rev += extra;
+    const U = ws.unmatched[q.key]; U.imp = (U.imp || 0) + q.imp; U.wh = (U.wh || 0) + q.imp * ratio; U.ratio = ratio;
   }
   const hasSales = S.sales.some(f => f.rows.length);
   const sumM = (cid, k) => Object.values(ws.matrix[cid] || {}).reduce((a, v) => a + v[k], 0);
@@ -1220,7 +1234,7 @@ function renderWholesale() {
   }).join('')}<tr class="sum"><td>الإجمالي</td><td></td><td class="n">${fmt(tq.qty)}</td><td class="n">${money(tq.imp)}</td><td class="n">${money(tq.wh)}</td><td class="n">${signed(tq.wh - tq.imp)}</td></tr></tbody></table>`;
   const un = Object.values(ws.unmatched);
   $('#wsUnmatchedCard').hidden = !un.length;
-  if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الكود</th><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.code)}</td><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td></tr>`).join('')}</tbody></table>`;
+  if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th><th class="n">تكلفة الاستيراد</th><th class="n">تكلفة الجملة (تقديري)</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td><td class="n">${money(u.imp || 0)}</td><td class="n">${money(u.wh || 0)} <span class="badge">×${fmt(u.ratio || 1, 2)}</span></td></tr>`).join('')}</tbody></table>`;
 }
 
 function renderInputs() {
