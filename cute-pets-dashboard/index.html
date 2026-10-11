@@ -230,6 +230,10 @@ tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
         <div class="card-head"><h2>المبيعات حسب التصنيف</h2><p>من عمود التصنيف في تقرير المبيعات، أو العلامة التجارية إن لم يوجد</p></div>
         <div class="table-wrap" id="stCats"></div>
       </div>
+      <div class="card" id="cSvcCard" hidden>
+        <div class="card-head"><h2>إيرادات الخدمات</h2><p id="cSvcNote">من تقرير المبيعات المجمع</p></div>
+        <div class="table-wrap" id="cSvc"></div>
+      </div>
       <div class="card" id="cBrandsCard">
         <div class="card-head"><h2>براندات الجملة في المتجر</h2><p>تكلفة الاستيراد من إدارة، وتكلفة الجملة بسعر قائمة الجملة</p></div>
         <div class="table-wrap" id="cBrands"></div>
@@ -539,15 +543,16 @@ const FIELDS = {
     ['ship', 'يتطلب شحن', ['يتطلب شحن', 'requires shipping']],
   ],
   sales: [
-    ['store', 'المتجر', ['المتجر', 'الفرع', 'نقطه البيع', 'store', 'branch']],
-    ['code', 'كود الصنف', ['كود الصنف', 'رقم الصنف', 'رمز الصنف', 'الكود', 'كود', 'باركود', 'sku', 'code']],
-    ['name', 'اسم الصنف *', ['اسم الصنف', 'الصنف', 'المنتج', 'الوصف', 'item', 'product', 'name']],
+    ['store', 'المتجر', ['sales store', 'المتجر', 'الفرع', 'نقطه البيع', 'store', 'branch']],
+    ['code', 'كود الصنف', ['itemcode', 'كود الصنف', 'رقم الصنف', 'رمز الصنف', 'الكود', 'كود', 'باركود', 'sku', 'code']],
+    ['service', 'الخدمة', ['service item']],
+    ['name', 'اسم الصنف *', ['stock item', 'اسم الصنف', 'الصنف', 'المنتج', 'الوصف', 'item', 'product', 'name']],
     ['brand', 'البراند', ['البراند', 'الماركه', 'العلامه التجاريه', 'العلامه', 'brand']],
-    ['category', 'التصنيف', ['التصنيف', 'تصنيف', 'الفئه', 'المجموعه', 'القسم', 'category', 'group']],
-    ['qty', 'الكمية (الصافي) *', ['الكميه المباعه', 'الصافي', 'الكميه', 'كميه', 'العدد', 'qty', 'quantity']],
+    ['category', 'التصنيف', ['stock item classification', 'التصنيف', 'تصنيف', 'الفئه', 'المجموعه', 'القسم', 'category', 'group']],
+    ['qty', 'الكمية (الصافي) *', ['net sales volume', 'الكميه المباعه', 'الصافي', 'الكميه', 'كميه', 'العدد', 'qty', 'quantity']],
     ['gp', 'مجمل الربح', ['مجمل الربح بمتوسط التكلفه', 'مجمل الربح', 'gross profit'], /%/],
-    ['bookCost', 'تكلفة الاستيراد', ['تكلفه المبيعات', 'اجمالي التكلفه', 'قيمه التكلفه', 'تكلفه البضاعه', 'تكلفه الوحده', 'التكلفه', 'تكلفه', 'cost'], /ربح|%/],
-    ['sales', 'صافي المبيعات *', ['صافي المبيعات', 'قيمه المبيعات', 'اجمالي المبيعات', 'المبيعات', 'الصافي', 'الاجمالي', 'القيمه', 'net', 'total', 'amount']],
+    ['bookCost', 'تكلفة الاستيراد', ['تكلفه المبيعات', 'اجمالي التكلفه', 'قيمه التكلفه', 'تكلفه البضاعه', 'تكلفه الوحده', 'grosscostaveragecost', 'التكلفه', 'تكلفه', 'cost'], /ربح|%/],
+    ['sales', 'صافي المبيعات *', ['net sales', 'صافي المبيعات', 'قيمه المبيعات', 'اجمالي المبيعات', 'المبيعات', 'الصافي', 'الاجمالي', 'القيمه', 'net', 'total', 'amount']],
   ],
   payroll: [
     ['name', 'الاسم *', ['الاسم', 'اسم الموظف', 'الموظف', 'name']],
@@ -672,9 +677,15 @@ function parseTable(kind, aoa, mapOverride) {
         cancelled: /ملغ|الغاء|محذوف|مسترجع|مرتجع|بانتظار الدفع|cancel|deleted|refund/.test(status),
         pickup: ship === 'لا' || ship === 'no' });
     } else if (kind === 'sales') {
-      const name = String(get(r, 'name')).trim();
+      // combined report: service lines carry their name in the service column
+      const svc = String(get(r, 'service')).trim();
+      const isService = !!svc && !/^stock ?item$/i.test(svc);
+      const name = (isService ? svc : String(get(r, 'name'))).trim();
       if (!name || SUBTOTAL.test(norm(name))) continue;
-      rows.push({ store: String(get(r, 'store')), code: String(get(r, 'code')).trim(), name, brand: String(get(r, 'brand')), category: String(get(r, 'category')).trim(), qty: toNum(get(r, 'qty')), sales: toNum(get(r, 'sales')),
+      let store = String(get(r, 'store'));
+      if (norm(store) === 'unknown') store = 'المحل';   // Edara shows the exhibit as "Unknown"
+      rows.push({ service: isService, store, code: String(get(r, 'code')).trim(), name, brand: String(get(r, 'brand')), category: String(get(r, 'category')).trim(), qty: toNum(get(r, 'qty')), sales: toNum(get(r, 'sales')),
+        ...(isService ? { category: 'خدمات', brand: '' } : {}),
         bookCost: map.bookCost >= 0 ? toNum(get(r, 'bookCost')) * (unitBook ? toNum(get(r, 'qty')) : 1)
           : map.gp >= 0 ? toNum(get(r, 'sales')) - toNum(get(r, 'gp')) : null });
     } else if (kind === 'payroll') {
@@ -842,11 +853,12 @@ function compute() {
     if (r.name) { costByName.set(norm(r.name), r.cost); if (r.brand && !r.code) brandByCode.set('n:' + norm(r.name), r.brand); }
   }
   const ws = { byBrand: {}, bySection: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0 };
-  const cats = {}, ratioAcc = {}, pending = [];
+  const cats = {}, svcs = {}, ratioAcc = {}, pending = [];
   for (const b of BRANDS) ws.byBrand[b.id] = { qty: 0, rev: 0, imp: 0 };
   for (const f of S.sales) {
     for (const r of f.rows) {
       const center = matchCenter(r.store) || f.center;
+      if (r.service) { svcs[center] = svcs[center] || {}; svcs[center][r.name] = (svcs[center][r.name] || 0) + r.sales; continue; }
       const catKey = r.category || r.brand.trim();
       if (catKey) { cats[center] = cats[center] || {}; cats[center][catKey] = (cats[center][catKey] || 0) + r.sales; }
       const brandTxt = r.brand || brandByCode.get(norm(r.code)) || brandByCode.get('n:' + norm(r.name)) || '';
@@ -932,7 +944,7 @@ function compute() {
       CENTERS.forEach(ce => finalize(c[ce.id]));
     }
   }
-  R = { c, ws, cats, mode, mainAllocated, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, cats, svcs, mode, mainAllocated, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -1210,6 +1222,17 @@ function renderStatement() {
   if (x.mainShare) dl.push(['حصة مصاريف الرئيسي', `${fmt(x.mainShare * 100, 1)}%`, money(x.mainAdmin + x.mainOp - x.mainRev)]);
   $('#cDelCard').hidden = !dl.length;
   $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
+
+  // services (grooming, play area, delivery …) from the combined sales report
+  const SV = R.svcs[stCenter];
+  $('#cSvcCard').hidden = !SV;
+  if (SV) {
+    const list = Object.entries(SV).sort((a, b) => b[1] - a[1]), tot = list.reduce((a, [, v]) => a + v, 0);
+    const isSvc = x.lines.filter(l => l.cat === 'delivery' || l.cat === 'other').reduce((a, l) => a + l.amount, 0) + x.delInIS + x.delOutIS;
+    $('#cSvc').innerHTML = `<table><thead><tr><th>الخدمة</th><th class="n">صافي الإيراد</th><th class="n">النسبة</th></tr></thead><tbody>${list.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="n">${money(v)}</td><td class="n num">${pct(v, tot)}</td></tr>`).join('')}<tr class="sum"><td>الإجمالي</td><td class="n">${money(tot)}</td><td class="n num">100%</td></tr></tbody></table>`;
+    $('#cSvcNote').textContent = `من تقرير المبيعات المجمع · تحليلي فقط، الإيراد في قائمة الدخل من إدارة (ايراد الخدمات ${money(x.delInIS + x.delOutIS)})`;
+    void isSvc;
+  }
 
   // wholesale brands sold in this store, or the wholesale analysis on the wholesale page
   const isWs = stCenter === 'wholesale', BM = R.ws.matrix[stCenter];
