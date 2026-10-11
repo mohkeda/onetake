@@ -696,13 +696,11 @@ function parseTable(kind, aoa, mapOverride) {
 /* ---------- fixed monthly expenses ---------- */
 // [name, monthly amount, Edara accounts it replaces (normalized pattern)]. Wholesale rent is its own
 // expense and stays as booked in Edara.
+// The first list sent had errors and was cancelled; waiting for the corrected one.
+// Entry format: ['name', monthly amount, 'Edara accounts it replaces (normalized regex)']
 const FIXED_DEFAULT = [
-  ['التامينات الاجتماعية', 2106.76, 'تامينات'], ['الايجار', 5208.33, 'ايجار'], ['نثريه', 10, 'نثري'],
-  ['مصاريف الإقامة وكارت العمل', 3304.14, 'اقام|كارت العمل|مكتب العمل'], ['مصاريف برنامج اداره', 180.41, 'برنامج'],
-  ['ترخيص الاستثمار', 0, 'ترخيص'], ['استضافه مواقع', 29.08, 'استضاف'], ['رسوم البلديه', 103.91, 'بلدي'],
-  ['رسوم قوى', 61.1, 'قوي|قوى'], ['رسوم مقيم', 82.5, 'مقيم'], ['اتعاب المحاسب القانوني', 361.11, 'محاسب|اتعاب'],
 ].map(([name, amount, re]) => ({ name, amount, re }));
-const fixedList = () => (store.settings.fixed || FIXED_DEFAULT);
+const fixedList = () => (store.settings.fixed2 || FIXED_DEFAULT);
 function fixedMatch(account, center) {
   const t = norm(account);
   return fixedList().find(f => f.re && new RegExp(f.re).test(t) && !(f.re === 'ايجار' && center === 'wholesale'));
@@ -1364,14 +1362,14 @@ function renderInputs() {
 
   // fixed expenses: editable amounts, and the Edara lines they replaced this month
   const FL = fixedList(), FR = R.fixedReplaced || [];
-  $('#fixedTable').innerHTML = `<table><thead><tr><th>المصروف</th><th class="n">المبلغ الشهري</th><th>يحل محل (من إدارة هذا الشهر)</th></tr></thead><tbody>${FL.map((f, i) => {
+  $('#fixedTable').innerHTML = !FL.length ? '<div class="empty">لا توجد مصاريف ثابتة حاليًا: بانتظار الكشف المصحح. لا يُستبعد شيء من قائمة الدخل.</div>' : `<table><thead><tr><th>المصروف</th><th class="n">المبلغ الشهري</th><th>يحل محل (من إدارة هذا الشهر)</th></tr></thead><tbody>${FL.map((f, i) => {
     const rep = FR.filter(x => x.by === f.name);
     return `<tr><td>${esc(f.name)}</td><td class="n"><input type="number" step="0.01" min="0" data-fx="${i}" value="${f.amount}" style="width:120px" aria-label="مبلغ ${esc(f.name)}"></td><td>${rep.length ? rep.map(x => `${esc(x.account)} · ${CMAP[x.center].short} <span class="num">${money(x.amount)}</span>`).join('، ') : '—'}</td></tr>`;
   }).join('')}<tr class="sum"><td>الإجمالي</td><td class="n">${money(FL.reduce((a, f) => a + (+f.amount || 0), 0))}</td><td>${FR.length ? `استُبعد من إدارة ${money(FR.reduce((a, x) => a + x.amount, 0))}` : ''}</td></tr></tbody></table>`;
   $('#fixedTable').querySelectorAll('[data-fx]').forEach(inp => inp.onchange = () => {
     const list = fixedList().map(f => ({ ...f }));
     list[+inp.dataset.fx].amount = +inp.value || 0;
-    store.settings.fixed = list; persist(); refresh();
+    store.settings.fixed2 = list; persist(); refresh();
   });
 
   // classification table
