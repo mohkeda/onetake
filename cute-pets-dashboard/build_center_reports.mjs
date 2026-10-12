@@ -27,6 +27,7 @@ const html = fs.readFileSync(template, 'utf8');
 if (!html.includes('/*LOCK*/null/*END*/')) throw new Error('template has no LOCK slot');
 fs.mkdirSync(outDir, { recursive: true });
 for (const [c, name] of Object.entries(CENTERS)) {
+  for (const [m, sn] of Object.entries(snaps[c])) if (!sn.summary?.revenue && !sn.summary?.exp) delete snaps[c][m];   // nothing recorded for this center that month
   const lock = JSON.stringify({ center: c, months: snaps[c] });
   const out = html.replace('/*LOCK*/null/*END*/', '/*LOCK*/' + lock + '/*END*/').replace(/<title>[^<]*<\/title>/, `<title>تقرير ${name}</title>`);
   fs.writeFileSync(`${outDir}/${c}.html`, out);

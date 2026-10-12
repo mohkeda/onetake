@@ -1,7 +1,8 @@
 # Bakes real months into a publish-only copy of the dashboard (kept out of the git repo).
 import json, sys
 src, seed_json, out = sys.argv[1:4]
-geo_json = sys.argv[4] if len(sys.argv) > 4 else None   # area totals from aggregate_orders.py (no individual orders)
+geo_json = sys.argv[4] if len(sys.argv) > 4 and sys.argv[4] != '-' else None   # area totals from aggregate_orders.py (no individual orders)
+archive_json = sys.argv[5] if len(sys.argv) > 5 else None   # months closed in the Excel workbook (extract_archive.py)
 d = json.load(open(seed_json))
 r2 = lambda v: round(v, 2) if isinstance(v, float) else v
 compact = {
@@ -13,7 +14,9 @@ compact = {
   'cls': d.get('cls') or {},
 }
 html = open(src, encoding='utf-8').read()
-seed = json.dumps({'2026-09': compact}, ensure_ascii=False, separators=(',', ':'))
+months = {m: {'archive': a} for m, a in json.load(open(archive_json)).items()} if archive_json else {}
+months['2026-09'] = compact
+seed = json.dumps(months, ensure_ascii=False, separators=(',', ':'))
 assert html.count('/*SEED*/null/*END*/') == 1
 open(out, 'w', encoding='utf-8').write(html.replace('/*SEED*/null/*END*/', '/*SEED*/' + seed + '/*END*/'))
 print('seed bytes', len(seed.encode()))

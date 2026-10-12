@@ -452,6 +452,7 @@ const SEED_MONTHS = /*SEED*/null/*END*/;
 const LOCK = /*LOCK*/null/*END*/;
 const histSrc = () => LOCK ? LOCK.hist : store.history;
 function expandSeed(d) {
+  if (d.archive) return { ...blankMonth(), archive: d.archive };
   // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup]
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cancelled: !!ca, pickup: !!pu })) })) },
@@ -1073,7 +1074,38 @@ function compute() {
   }
   R = { c, geo, ws, cats, catCost, svcs, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
+  if (S.archive && !S.is) applyArchive(R, S.archive);
   return R;
+}
+// A month closed before the dashboard (imported from the monthly Excel workbook): each center's statement
+// is taken line by line as it was approved, with no allocation rules applied on top.
+function applyArchive(R, A) {
+  const has = (t, ...ws) => ws.some(w => norm(t).includes(norm(w)));
+  for (const ce of CENTERS) {
+    const a = A[ce.id], x = R.c[ce.id];
+    Object.assign(x, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: 0, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, vehAlloc: 0, packAlloc: 0,
+      admin: 0, expenses: 0, mainRev: 0, mainAdmin: 0, mainOp: 0, mainShare: 0, ordAll: 0, ordIn: 0, ordOut: 0, lines: [] });
+    for (const [acc, v] of a?.rev || []) {
+      if (has(acc, 'بدون بضاعه الجمله')) x.revMain += v;
+      else if (has(acc, 'مبيعات الجمله')) x.revBrand += v;
+      else if (has(acc, 'الشحن الخارجي')) x.delOut += v;
+      else if (has(acc, 'التوصيل داخل الرياض')) x.delIn += v;
+      else if (v) { x.otherRev += v; x.lines.push({ account: acc, cat: 'other', amount: v }); }
+    }
+    for (const [acc, v] of a?.admin || []) if (v) { x.admin += v; x.lines.push({ account: acc, cat: 'admin', amount: v }); }
+    for (const [acc, v] of a?.op || []) {
+      if (has(acc, 'تكلفه بضاعه الجمله')) x.cogsWs += v;
+      else if (has(acc, 'تكلفه البضاعه المباعه')) x.cogsMain += v;
+      else if (v) { x.expenses += v; x.lines.push({ account: acc, cat: 'expense', amount: v }); }
+    }
+    x.salesRev = x.revMain + x.revBrand;
+    x.delivery = x.delIn + x.delOut;
+    x.revenue = x.revMain + x.revBrand + x.delivery + x.otherRev;
+    x.cogs = x.cogsMain + x.cogsWs; x.gross = x.revenue - x.cogs;
+    x.adminT = x.admin; x.opex = x.cogs + x.expenses; x.totalExp = x.adminT + x.opex; x.net = x.revenue - x.totalExp;
+    R.cats[ce.id] = a?.cats || {};
+  }
+  Object.assign(R, { archive: true, hasIS: true, payrollMissing: false, mainAllocated: false, mainPool: [], catCost: {}, svcs: {}, xfer: false });
 }
 function summary(r) {
   const out = {};
@@ -1288,6 +1320,7 @@ function renderResults() {
   $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
   const notes = [];
   if (r.payrollMissing) notes.push('⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب');
+  if (r.archive) notes.push('شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
   if (r.mainAllocated) notes.push(`مصاريف الرئيسي موزعة ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}${store.settings.mainKeep ? ` ما عدا: ${store.settings.mainKeep}` : ''}`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
@@ -1354,8 +1387,8 @@ function renderStatement() {
   $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
 
   renderBreakeven(ce, x);
-  $('#geoStore').hidden = !ce.delivery;
-  if (ce.delivery) renderGeo($('#geoStore'), ce.id, 'store', false);
+  $('#geoStore').hidden = !ce.delivery || !!R.archive;
+  if (ce.delivery && !R.archive) renderGeo($('#geoStore'), ce.id, 'store', false);
 
   // services (grooming, play area, delivery …) from the combined sales report
   const SV = R.svcs[stCenter];
@@ -1419,9 +1452,9 @@ function renderStatement() {
   t += row('تكلفة البضاعة المباعة', x.cogsMain);
   t += row('تكلفة بضاعة الجملة', x.cogsWs);
   for (const [a, v] of lines('expense')) t += row(a, v);
-  t += row('محروقات (بعدد طلبات الرياض)', x.fuelAlloc);
+  if (!R.archive) t += row('محروقات (بعدد طلبات الرياض)', x.fuelAlloc);
   if (x.vehAlloc) t += row('صيانة السيارات (بعدد طلبات الرياض)', x.vehAlloc);
-  t += row('مستلزمات التغليف (بعدد الطلبات)', x.packAlloc);
+  if (!R.archive) t += row('مستلزمات التغليف (بعدد الطلبات)', x.packAlloc);
   if (x.mainOp) { t += row(`حصة الرئيسي من المصاريف التشغيلية (${fmt(x.mainShare * 100, 1)}%)`, x.mainOp); poolDetail('op'); }
   t += row('إجمالي المصروفات', exp, 'sub');
   t += row('صافي الربح / الخسارة', x.net, 'sum', 'rev');
@@ -1477,7 +1510,7 @@ const beMix = {};   // per center: { category: share } chosen in the simulator (
 function renderBreakeven(ce, x) {
   const sales = R.cats[ce.id] || {}, cost = R.catCost[ce.id] || {};
   const names = Object.keys(sales).filter(k => sales[k] > 0);
-  $('#cBeCard').hidden = !names.length || ce.id === 'wholesale';
+  $('#cBeCard').hidden = !names.length || ce.id === 'wholesale' || R.archive;
   if ($('#cBeCard').hidden) return;
   const S = names.reduce((a, k) => a + sales[k], 0), C = names.reduce((a, k) => a + (cost[k] || 0), 0);
   const varExp = x.fuelAlloc + x.vehAlloc + x.packAlloc + x.lines.filter(l => l.cat === 'expense' && VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
@@ -1995,7 +2028,7 @@ window.__cpSnapshot = cid => {
     c: { [cid]: R.c[cid] }, ws, cats: only(R.cats), catCost: only(R.catCost), svcs: only(R.svcs),
     geo: R.geo ? { cities: geoOnly(R.geo.cities), districts: geoOnly(R.geo.districts) } : null,
     mainPool: R.mainPool, mainAllocated: R.mainAllocated, mode: R.mode, xfer: R.xfer, hasIS: R.hasIS, hasOrders: R.hasOrders, hasSales: R.hasSales,
-    payrollMissing: R.payrollMissing, totIn: R.totIn, totAll: R.totAll, summary: summary(R)[cid],
+    payrollMissing: R.payrollMissing, totIn: R.totIn, totAll: R.totAll, summary: summary(R)[cid], archive: !!R.archive,
   }));
 };
 
