@@ -366,11 +366,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
       </div>
 
       <div class="card">
-        <div class="card-head"><h2>المصاريف الثابتة الشهرية</h2><p>تُحتسب كل شهر، وتحل محل نفس الحسابات في قائمة الدخل من إدارة (إيجار الجملة يبقى من إدارة)</p></div>
-        <div class="settings" style="margin-bottom:10px">
-          <div class="field"><label for="setFixedAlloc">من يتحملها</label>
-            <select id="setFixedAlloc"><option value="main">الرئيسي (تُوزَّع مع مصاريف الرئيسي)</option><option value="five">5 مراكز بالتساوي</option><option value="three">3 متاجر بالتساوي</option></select></div>
-        </div>
+        <div class="card-head"><h2>المصاريف الثابتة الشهرية</h2><p>غير مسجلة في إدارة بعد: تُحتسب كل شهر على كل مركز بمبلغه، وتحل محل نفس الحسابات إن ظهرت في قائمة الدخل من إدارة (إيجار الجملة يبقى من إدارة)</p></div>
         <div class="table-wrap" id="fixedTable"></div>
       </div>
 
@@ -832,13 +828,19 @@ function mainDirect(r) {
 }
 
 /* ---------- fixed monthly expenses ---------- */
-// [name, monthly amount, Edara accounts it replaces (normalized pattern)]. Wholesale rent is its own
-// expense and stays as booked in Edara.
-// The first list sent had errors and was cancelled; waiting for the corrected one.
-// Entry format: ['name', monthly amount, 'Edara accounts it replaces (normalized regex)']
+// Monthly fixed expenses not yet booked in Edara, per center (amounts as in August 2026, approved for September).
+// Each replaces the same accounts in Edara's statement if they appear there, so nothing is counted twice.
+// Wholesale rent is its own expense and stays as booked in Edara.
+// Entry: ['name', { center: monthly amount }, 'Edara accounts it replaces (normalized regex)']
 const FIXED_DEFAULT = [
-].map(([name, amount, re]) => ({ name, amount, re }));
-const fixedList = () => (store.settings.fixed2 || FIXED_DEFAULT);
+  ['الإيجار', { exhibit: 10416.66, cpstore: 5208.33, hamtaro: 5208.33 }, 'ايجار'],
+  ['أتعاب المحاسب القانوني', { exhibit: 361.11, cpstore: 361.11, hamtaro: 361.11 }, 'محاسب'],
+  ['اشتراك سلة', { cpstore: 249, hamtaro: 249, wagy: 249 }, 'اشتراك سل'],
+  ['إهلاك سيارات', { cpstore: 404.36, hamtaro: 404.36, wagy: 404.36 }, 'اهلاك'],
+  ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
+  ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
+].map(([name, by, re]) => ({ name, by, re }));
+const fixedList = () => (store.settings.fixed3 || FIXED_DEFAULT);
 function fixedMatch(account, center) {
   const t = norm(account);
   return fixedList().find(f => f.re && new RegExp(f.re).test(t) && !(f.re === 'ايجار' && center === 'wholesale'));
@@ -951,10 +953,7 @@ function compute() {
   }
 
   if (isRows.length) {
-    const targets = set.fixedAlloc === 'five' ? CENTERS.filter(ce => !ce.shared).map(ce => ce.id)
-      : set.fixedAlloc === 'three' ? CENTERS.filter(ce => ce.delivery).map(ce => ce.id) : ['main'];
-    for (const f of fixedList()) if (f.amount) for (const cid of targets) {
-      const v = f.amount / targets.length;
+    for (const f of fixedList()) for (const [cid, v] of Object.entries(f.by || {})) if (v && c[cid]) {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
     }
   }
@@ -1840,15 +1839,16 @@ function renderInputs() {
   $('#up-sales .status').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.sales.splice(+b.dataset.rm, 1); raw.sales?.splice(+b.dataset.rm, 1); refresh(); });
 
   // fixed expenses: editable amounts, and the Edara lines they replaced this month
-  const FL = fixedList(), FR = R.fixedReplaced || [];
-  $('#fixedTable').innerHTML = !FL.length ? '<div class="empty">لا توجد مصاريف ثابتة حاليًا: بانتظار الكشف المصحح. لا يُستبعد شيء من قائمة الدخل.</div>' : `<table><thead><tr><th>المصروف</th><th class="n">المبلغ الشهري</th><th>يحل محل (من إدارة هذا الشهر)</th></tr></thead><tbody>${FL.map((f, i) => {
+  const FL = fixedList(), FR = R.fixedReplaced || [], FC = CENTERS.filter(ce => !ce.shared && ce.id !== 'wholesale');
+  const fsum = f => Object.values(f.by || {}).reduce((a, v) => a + (+v || 0), 0);
+  $('#fixedTable').innerHTML = !FL.length ? '<div class="empty">لا توجد مصاريف ثابتة حاليًا. لا يُستبعد شيء من قائمة الدخل.</div>' : `<table><thead><tr><th>المصروف</th>${FC.map(ce => `<th class="n">${ce.short}</th>`).join('')}<th class="n">الإجمالي</th><th>يحل محل (من إدارة هذا الشهر)</th></tr></thead><tbody>${FL.map((f, i) => {
     const rep = FR.filter(x => x.by === f.name);
-    return `<tr><td>${esc(f.name)}</td><td class="n"><input type="number" step="0.01" min="0" data-fx="${i}" value="${f.amount}" style="width:120px" aria-label="مبلغ ${esc(f.name)}"></td><td>${rep.length ? rep.map(x => `${esc(x.account)} · ${CMAP[x.center].short} <span class="num">${money(x.amount)}</span>`).join('، ') : '—'}</td></tr>`;
-  }).join('')}<tr class="sum"><td>الإجمالي</td><td class="n">${money(FL.reduce((a, f) => a + (+f.amount || 0), 0))}</td><td>${FR.length ? `استُبعد من إدارة ${money(FR.reduce((a, x) => a + x.amount, 0))}` : ''}</td></tr></tbody></table>`;
+    return `<tr><td>${esc(f.name)}</td>${FC.map(ce => `<td class="n"><input type="number" step="0.01" min="0" data-fx="${i}" data-fc="${ce.id}" value="${f.by?.[ce.id] || 0}" style="width:96px" aria-label="${esc(f.name)} · ${ce.short}"></td>`).join('')}<td class="n">${money(fsum(f))}</td><td>${rep.length ? rep.map(x => `${esc(x.account)} · ${CMAP[x.center].short} <span class="num">${money(x.amount)}</span>`).join('، ') : '—'}</td></tr>`;
+  }).join('')}<tr class="sum"><td>الإجمالي</td>${FC.map(ce => `<td class="n">${money(FL.reduce((a, f) => a + (+f.by?.[ce.id] || 0), 0))}</td>`).join('')}<td class="n">${money(FL.reduce((a, f) => a + fsum(f), 0))}</td><td>${FR.length ? `استُبعد من إدارة ${money(FR.reduce((a, x) => a + x.amount, 0))}` : ''}</td></tr></tbody></table>`;
   $('#fixedTable').querySelectorAll('[data-fx]').forEach(inp => inp.onchange = () => {
-    const list = fixedList().map(f => ({ ...f }));
-    list[+inp.dataset.fx].amount = +inp.value || 0;
-    store.settings.fixed2 = list; persist(); refresh();
+    const list = fixedList().map(f => ({ ...f, by: { ...f.by } }));
+    list[+inp.dataset.fx].by[inp.dataset.fc] = +inp.value || 0;
+    store.settings.fixed3 = list; persist(); refresh();
   });
 
   // classification table
@@ -2148,7 +2148,6 @@ bindSetting('#setRiyadh', 'riyadh');
 bindSetting('#setDelivery', 'deliverySource');
 bindSetting('#setWsMode', 'wsMode');
 bindSetting('#setMainBasis', 'mainBasis');
-bindSetting('#setFixedAlloc', 'fixedAlloc');
 bindSetting('#setMainKeep', 'mainKeep');
 bindSetting('#setTaxRate', 'taxRate');
 bindSetting('#setTaxAddback', 'taxAddback');
