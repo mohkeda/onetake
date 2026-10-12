@@ -973,6 +973,17 @@ function compute() {
     }).filter(o => o.b > 0);
     const B = recips.reduce((a, o) => a + o.b, 0);
     if (B) {
+      // advertising cashback (e.g. Darb platform) on the shared center goes back to the online stores
+      // that spent on advertising, in proportion to that spend
+      const isAd = l => l.cat === 'expense' && /دعاي/.test(norm(l.account));
+      const cashback = M.lines.filter(l => isAd(l) && l.amount < 0 && !isKept(l.account));
+      const cbTotal = cashback.reduce((a, l) => a + l.amount, 0);
+      const spend = CENTERS.filter(ce => ce.delivery).map(ce => ({ x: c[ce.id], v: c[ce.id].lines.filter(l => isAd(l) && l.amount > 0).reduce((a, l) => a + l.amount, 0) })).filter(o => o.v > 0);
+      const spendT = spend.reduce((a, o) => a + o.v, 0);
+      if (cbTotal && spendT) {
+        for (const { x, v } of spend) { const a = cbTotal * v / spendT; x.expenses += a; x.lines.push({ account: `كاش باك منصة درب (دعاية) · ${fmt(v / spendT * 100, 1)}% من الصرف الإعلاني`, cat: 'expense', amount: a }); }
+        M.expenses -= cbTotal; M.lines = M.lines.filter(l => !cashback.includes(l)); finalize(M);
+      }
       const pool = { rev: M.revenue - M.kept.rev, admin: M.adminT - M.kept.admin, op: M.opex - M.kept.op };
       for (const { x, b } of recips) { x.mainShare = b / B; x.mainRev = pool.rev * x.mainShare; x.mainAdmin = pool.admin * x.mainShare; x.mainOp = pool.op * x.mainShare; }
       // keep the pooled lines so each center's statement can show what its share is made of
