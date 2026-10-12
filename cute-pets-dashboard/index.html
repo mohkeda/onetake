@@ -510,7 +510,7 @@ function expandSeed(d) {
 }
 const expandSales = list => (list || []).map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost, category = '', store = '', service = 0, code = '']) => ({ store, code, name, brand, category, qty, sales, bookCost, service: !!service })) }));
 function expandSeedData(d) {
-  if (d.archive) return { ...blankMonth(), archive: d.archive, sales: expandSales(d.sales), cls: d.cls || {} };
+  if (d.archive) return { ...blankMonth(), archive: d.archive, sales: expandSales(d.sales), cls: d.cls || {}, geoAgg: d.geo || null };
   // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup, cod]
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu, cod = 0]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cod, cancelled: !!ca, pickup: !!pu })) })) },
@@ -1612,8 +1612,8 @@ function renderStatement() {
   $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
 
   renderBreakeven(ce, x);
-  $('#geoStore').hidden = !ce.delivery || !!R.archive;
-  if (ce.delivery && !R.archive) renderGeo($('#geoStore'), ce.id, 'store', false);
+  $('#geoStore').hidden = !ce.delivery || !R.geo;
+  if (ce.delivery && R.geo) renderGeo($('#geoStore'), ce.id, 'store', false);
 
   // services (grooming, play area, delivery …) from the combined sales report
   const SV = R.svcs[stCenter];
