@@ -434,6 +434,7 @@ const WS_OLD = {
   'كانيفا جاف 300 جم': { piece: 13.00 }, 'كانيفا جاف 1 كجم': { piece: 33.50 }, 'كانيفا جاف 2 كجم': { piece: 65.00 }, 'كانيفا جاف 8 كجم': { piece: 146.95 },
   'رون رون رطب 75 جم': { piece: 3.50 }, 'رون رون رطب كرتون 12×': { carton: 42.00 },
 };
+const curMonthKey = () => $('#month')?.value || '';
 const wsOldPeriod = () => ($('#month')?.value || '9999') < WS_PRICES_FROM;
 // In the month the new prices start, the new stock arrived only at its end: a product that was already
 // in stock (it sold the month before) keeps the old price; a new product, or one that was out of stock, takes the new price.
@@ -503,7 +504,7 @@ function expandSeedData(d) {
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu, cod = 0]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cod, cancelled: !!ca, pickup: !!pu })) })) },
     sales: expandSales(d.sales),
-    payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost, doctor], i) => ({ name: `موظف ${i + 1}`, cc, note, cost, doctor: !!doctor })) } : null,
+    payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost, doctor], i) => ({ name: `موظف ${i + 1}`, cc, note, cost, doctor: !!doctor })), emp: d.payroll.emp || null } : null,
     geoAgg: d.geo || null,   // per city / Riyadh district totals for the order maps
     oldStock: d.oldStock || null,   // products in stock before the price change (see wsPrice)
     costs: null, cls: d.cls || {}, demo: false, k: 1 };
@@ -598,7 +599,7 @@ function persist() {
 }
 
 /* ---------- file reading ---------- */
-function readFile(file) {
+function readFile(file, allSheets = false) {
   return new Promise((res, rej) => {
     const fr = new FileReader();
     fr.onerror = () => rej(fr.error);
@@ -608,9 +609,8 @@ function readFile(file) {
         // CSV exports are UTF-8 text; reading them as bytes would garble Arabic headers.
         const wb = isText ? XLSX.read(String(fr.result).replace(/^\uFEFF/, ''), { type: 'string', raw: false })
                           : XLSX.read(fr.result, { type: 'array', cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
-        res(aoa);
+        const toAoa = ws => XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: false });
+        res(allSheets ? wb.SheetNames.map(n => ({ name: n, aoa: toAoa(wb.Sheets[n]) })) : toAoa(wb.Sheets[wb.SheetNames[0]]));
       } catch (e) { rej(e); }
     };
     if (isText) fr.readAsText(file, 'utf-8'); else fr.readAsArrayBuffer(file);
@@ -841,12 +841,20 @@ const FIXED_DEFAULT = [
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
 ].map(([name, by, re]) => ({ name, by, re }));
 const fixedList = () => (store.settings.fixed3 || FIXED_DEFAULT);
+// Al Rajhi loan (625,000, 24 installments of 31,810.07 on the 15th). The expense is the profit part of the
+// month's installment («خدمة القرض»), split equally on the exhibit, Cute and Hamtaro as before; the principal is not an expense.
+const LOAN_PROFIT = { '2026-09': 7043.14, '2026-10': 6413.73, '2026-11': 6201.35, '2026-12': 5585.43, '2027-01': 5331.53, '2027-02': 4887.20,
+  '2027-03': 4006.17, '2027-04': 3968.82, '2027-05': 3388.66, '2027-06': 3024.68, '2027-07': 2459.64, '2027-08': 2249.10, '2027-09': 1549.68,
+  '2027-10': 1008.27, '2027-11': 525.03 };
+const LOAN_CENTERS = ['exhibit', 'cpstore', 'hamtaro'];
 function fixedMatch(account, center) {
   const t = norm(account);
   return fixedList().find(f => f.re && new RegExp(f.re).test(t) && !(f.re === 'ايجار' && center === 'wholesale'));
 }
 
 /* ---------- payroll (rules come from the sheet's notes) ---------- */
+// Edara accounts the payroll workbook's employee costs replace
+const EMP_COST_RE = /تامينات|اقامه|كارت العمل|مكتب العمل|تامين طبي|التامين الطبي|تامين صحي/;
 const PAY_LINES = { staff: 'الرواتب', doctor: 'رواتب الدكتور', mgmt: 'رواتب الإدارة', saudi: 'رواتب السعوديين (سعودة)' };
 function payrollAlloc(rows) {
   const byCenter = {}, unknown = [];
@@ -919,6 +927,7 @@ function compute() {
   const isRows = S.is?.rows || [];
   const hasPayroll = !!(S.payroll?.rows?.length);
   const pay = hasPayroll ? payrollAlloc(S.payroll.rows) : null;
+  const empCosts = hasPayroll && S.payroll.emp && Object.keys(S.payroll.emp).length ? S.payroll.emp : null;
   let salariesReplaced = 0;
   const fixedReplaced = [];
   const revSum = isRows.filter(r => ['sales', 'other', 'delivery'].includes(S.cls[r.account] || classify(r.account, r.group))).reduce((a, r) => a + r.amount, 0);
@@ -930,6 +939,9 @@ function compute() {
     if (r.center === 'main' && norm(r.account).includes('حكومي')) continue;   // government fees on the shared center are not a real profit or loss
     // salaries never come from Edara: they come only from the monthly payroll sheet
     if (/رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
+    // employee-linked costs (GOSI, iqama, work office, medical) come from the payroll workbook when it has them
+    if (empCosts && (cat === 'admin' || cat === 'expense') && EMP_COST_RE.test(norm(r.account))) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: 'ملف الرواتب' }); continue; }
+    if (LOAN_PROFIT[curMonthKey()] != null && (cat === 'admin' || cat === 'expense') && /قرض/.test(norm(r.account))) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: 'خدمة القرض' }); continue; }
     // fixed monthly expenses come from the fixed list, not from Edara
     const fx = (cat === 'admin' || cat === 'expense') && fixedMatch(r.account, r.center);
     if (fx) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: fx.name }); continue; }
@@ -953,8 +965,20 @@ function compute() {
   }
 
   if (isRows.length) {
+    const loan = LOAN_PROFIT[curMonthKey()];
+    if (loan) for (const cid of LOAN_CENTERS) { c[cid].admin += loan / LOAN_CENTERS.length; c[cid].lines.push({ account: 'خدمة القرض', cat: 'admin', amount: loan / LOAN_CENTERS.length }); }
     for (const f of fixedList()) for (const [cid, v] of Object.entries(f.by || {})) if (v && c[cid]) {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
+    }
+  }
+  if (empCosts) for (const [unit, v] of Object.entries(empCosts)) {
+    const t = norm(unit);
+    // delivery staff and shared store staff are split equally over the three online stores, like their salaries
+    const targets = /توصيل|متاجر/.test(t) ? CENTERS.filter(ce => ce.delivery).map(ce => ce.id)
+      : /اداره/.test(t) ? CENTERS.filter(ce => !ce.shared).map(ce => ce.id) : [matchCenter(unit)].filter(Boolean);
+    for (const cid of targets) for (const [k, label] of [['gosi', 'التأمينات الاجتماعية'], ['iqama', 'مصاريف الإقامة وكارت العمل'], ['medical', 'التأمين الطبي']]) {
+      const a = (v[k] || 0) / targets.length; if (!a) continue;
+      c[cid].admin += a; c[cid].lines.push({ account: label, cat: 'admin', amount: a });
     }
   }
   if (pay) for (const [cid, B] of Object.entries(pay.byCenter)) for (const k of ['staff', 'doctor', 'mgmt', 'saudi']) if (B[k]) {
@@ -1895,9 +1919,26 @@ function setupDrop(cardId, inputId, handler) {
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); [...e.dataTransfer.files].forEach(handler); });
 }
-async function safeRead(file, cardId) {
-  try { return await readFile(file); }
+async function safeRead(file, cardId, allSheets = false) {
+  try { return await readFile(file, allSheets); }
   catch (e) { $(`#${cardId} .status`).innerHTML = `<span class="badge">تعذّرت قراءة ${esc(file.name)}. احفظه بصيغة xlsx أو csv وأعد الرفع.</span>`; return null; }
+}
+// «توزيع التكاليف حسب الوحدة» in the payroll workbook: GOSI, iqama + work card and medical insurance per unit
+function parseEmpCosts(sheets) {
+  for (const { aoa } of sheets) {
+    const h = aoa.findIndex(r => r.some(c => norm(c) === 'الوحده') && r.some(c => /تامينات/.test(norm(c))));
+    if (h < 0) continue;
+    const H = aoa[h].map(c => norm(c)), col = re => H.findIndex(c => re.test(c));
+    const cu = col(/^الوحده$/), cg = col(/تامينات/), ci = col(/اقامه|كارت/), cm = col(/تامين صحي|تامين طبي/);
+    const out = {};
+    for (const r of aoa.slice(h + 1)) {
+      const u = String(r[cu] ?? '').trim();
+      if (!u || /اجمالي/.test(norm(u))) { if (/اجمالي/.test(norm(u))) break; continue; }
+      out[u] = { gosi: toNum(r[cg]), iqama: ci >= 0 ? toNum(r[ci]) : 0, medical: cm >= 0 ? toNum(r[cm]) : 0 };
+    }
+    if (Object.keys(out).length) return out;
+  }
+  return null;
 }
 function leaveDemo() { if (S.demo) { S = blankMonth(); raw = {}; } }
 
@@ -1924,10 +1965,12 @@ setupDrop('up-orders', 'file-orders', async file => {
   mappingUI($('#up-orders .map'), (aoa[p.map.header] || []).map(String), FIELDS.orders, p.map, m => { entry.rows = parseTable('orders', aoa, m).rows; refresh(); });
 });
 setupDrop('up-payroll', 'file-payroll', async file => {
-  const aoa = await safeRead(file, 'up-payroll'); if (!aoa) return;
+  const sheets = await safeRead(file, 'up-payroll', true); if (!sheets) return;
   leaveDemo();
-  const p = parseTable('payroll', aoa);
-  S.payroll = { fileName: file.name, rows: p.rows };
+  // the salary sheet is the one with the most employee rows; the summary sheet carries the employee-linked costs by unit
+  const parsed = sheets.map(sh => ({ sh, p: parseTable('payroll', sh.aoa) })).sort((a, b) => b.p.rows.length - a.p.rows.length);
+  const { sh: { aoa }, p } = parsed[0];
+  S.payroll = { fileName: file.name, rows: p.rows, emp: parseEmpCosts(sheets) };
   refresh();
   mappingUI($('#up-payroll .map'), (aoa[p.map.header] || []).map(String), FIELDS.payroll, p.map, m => { S.payroll.rows = parseTable('payroll', aoa, m).rows; refresh(); });
 });

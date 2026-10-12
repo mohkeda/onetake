@@ -10,7 +10,7 @@ compact = {
   'is': {'f': d['is']['fileName'], 'r': [[x['account'], x['center'], r2(x['amount']), x.get('group')] for x in d['is']['rows']]},
   'orders': [{'f': f['fileName'], 'c': f['center'], 'r': [[1 if o['city'] == 'Riyadh' else 0, r2(o['fee']), int(o['cancelled']), int(o['pickup']), r2(o.get('cod', 0))] for o in f['rows']]} for f in d['orders']['files']],
   'sales': None,
-  'payroll': {'f': d['payroll']['fileName'], 'r': [[x['cc'], x['note'], r2(x['cost']), 1 if x.get('doctor') else 0] for x in d['payroll']['rows']]} if d.get('payroll') else None,   # no employee names
+  'payroll': {'f': d['payroll']['fileName'], 'r': [[x['cc'], x['note'], r2(x['cost']), 1 if x.get('doctor') else 0] for x in d['payroll']['rows']], 'emp': d['payroll'].get('emp')} if d.get('payroll') else None,   # no employee names
   'geo': (lambda g: {'cities': g['cities'], 'districts': g['districts']})(json.load(open(geo_json))) if geo_json else None,
   'cls': d.get('cls') or {},
 }
