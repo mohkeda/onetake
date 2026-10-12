@@ -925,7 +925,7 @@ function compute() {
   // Lines of the shared center that are NOT distributed to the stores (e.g. government fees).
   const keepWords = String(set.mainKeep || '').split(/[,،]/).map(norm).filter(Boolean);
   // Delivery-app sales booked on the shared center stay on it with their cost and commission: not distributed, not shown for now
-  const APP_SALES = /^المبيعات$|مردودات المبيعات|فروق المرتجعات|تكلفه البضاعه المباعه|عموله مبيعات/;
+  const APP_SALES = /^المبيعات$|مردودات المبيعات|فروق المرتجعات|تكلفه البضاعه المباعه/;
   const isKept = acc => keepWords.some(k => norm(acc).includes(k)) || APP_SALES.test(norm(acc));
 
   // Income statement: keep every account line so a center's statement can be printed in the report layout.
@@ -944,6 +944,9 @@ function compute() {
     const a = r.amount * flip, x = c[mainDirect(r)];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
     if (r.center === 'main' && norm(r.account).includes('حكومي')) continue;   // government fees on the shared center are not a real profit or loss
+    // the sales commission on the shared center is the stores' commission for the month before: not this month's expense
+    // (this month's commissions will be computed by the method the owner provides)
+    if (r.center === 'main' && /عموله مبيعات/.test(norm(r.account))) continue;
     // salaries never come from Edara: they come only from the monthly payroll sheet
     if (/رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
     // employee-linked costs (GOSI, iqama, work office, medical) come from the payroll workbook when it has them
@@ -1473,7 +1476,7 @@ function renderResults() {
   if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يتحمل ${fmt(r.tax.rate * 100)}% من ربحه فقط، والفرق ${money(r.tax.total - r.tax.borne)} على مستوى الشركة (يظهر في الإجمالي فقط)`);
   if (r.archive) notes.push(r.salesCalc ? (Object.values(r.c).some(x => x.fromSales) ? 'المبيعات وتكلفة البضاعة لـ' + CENTERS.filter(ce => r.c[ce.id].fromSales).map(ce => ce.short).join(' و') + ' من تقرير المبيعات (الملف كان منسوخاً من الشهر السابق) · ' : '') + 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) · تكلفة بضاعة الجملة في المراكز وإيراد الجملة محسوبان من تقرير المبيعات بأسعار الجملة القديمة · الجملة لم تكن تتحمل أي مصاريف قبل سبتمبر' : 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
-  if (r.mainAllocated) notes.push(`مركز التكلفة المشترك (الرئيسي) موزع بالكامل: ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}، والمحروقات وصيانة السيارات والتغليف على المتاجر بالطلبات، والمصروفات الحكومية وتسوية المخزون متجاهلة، ومبيعات تطبيقات التوصيل وتكلفتها وعمولتها على حدة (غير معروضة حالياً)`);
+  if (r.mainAllocated) notes.push(`مركز التكلفة المشترك (الرئيسي) موزع بالكامل: ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}، والمحروقات وصيانة السيارات والتغليف على المتاجر بالطلبات، والمصروفات الحكومية وتسوية المخزون متجاهلة، ومبيعات تطبيقات التوصيل وتكلفتها على حدة (غير معروضة حالياً)، وعمولة المبيعات على الرئيسي (تخص الشهر السابق) مستبعدة`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
   $('#plNote').textContent = notes.join(' · ');
 }
