@@ -609,6 +609,8 @@ function blankMonth() { return { is: null, orders: null, sales: [], costs: null,
 function loadStore() {
   try { const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (s) store = { ...store, ...s, settings: { ...DEFAULT_SETTINGS, ...(s.settings || {}) } }; } catch (e) {}
   if (!store.costs) { const m = Object.values(store.months).find(v => v.data?.costs); if (m) store.costs = m.data.costs; }
+  // one-time reset: October 2026 starts empty (entries there came from the old month-picker bug / tests)
+  if (!store.purgedOct26) { delete store.months['2026-10']; delete store.history['2026-10']; store.purgedOct26 = true; persist(); }
 }
 function persist() {
   const months = Object.fromEntries(Object.entries(store.months).map(([m, v]) =>
