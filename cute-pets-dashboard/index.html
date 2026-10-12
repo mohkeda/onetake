@@ -1175,7 +1175,7 @@ function compute() {
       const spend = CENTERS.filter(ce => ce.delivery).map(ce => ({ x: c[ce.id], v: c[ce.id].lines.filter(l => isAd(l) && l.amount > 0).reduce((a, l) => a + l.amount, 0) })).filter(o => o.v > 0);
       const spendT = spend.reduce((a, o) => a + o.v, 0);
       if (cbTotal && spendT) {
-        for (const { x, v } of spend) { const a = cbTotal * v / spendT; x.expenses += a; x.lines.push({ account: `كاش باك منصة درب (دعاية) · ${fmt(v / spendT * 100, 1)}% من الصرف الإعلاني`, cat: 'expense', amount: a }); }
+        for (const { x, v } of spend) { const a = cbTotal * v / spendT; x.expenses += a; x.lines.push({ account: 'مصاريف دعاية واعلان', cat: 'expense', amount: a }); }   // the cashback reduces the advertising line itself
         M.expenses -= cbTotal; M.lines = M.lines.filter(l => !cashback.includes(l)); finalize(M);
       }
       const pool = { rev: M.revenue - M.kept.rev, admin: M.adminT - M.kept.admin, op: M.opex - M.kept.op };
@@ -1205,9 +1205,11 @@ function compute() {
       add(ce.id, 'طيار (فاتورة المنصة)', TY[ce.id] || 0);
     }
     CENTERS.forEach(ce => finalize(c[ce.id]));
-    // store managers: a share of each online store's net profit, after the other costs
-    for (const ce of CENTERS.filter(ce => ce.delivery)) add(ce.id, `عمولة مديري المتاجر (${C.managerPct}% من صافي الربح)`, Math.max(0, c[ce.id].net) * C.managerPct / 100);
-    CENTERS.forEach(ce => finalize(c[ce.id]));
+    // store managers: a share of each online store's net profit, shown after the net profit and before the tax
+    for (const ce of CENTERS) {
+      const x = c[ce.id]; x.mgrComm = ce.delivery ? Math.max(0, x.net) * C.managerPct / 100 : 0;
+      x.netBeforeMgr = x.net; x.net -= x.mgrComm;
+    }
   }
   R = { c, geo, ws, cats, catCost, svcs, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
@@ -1433,6 +1435,8 @@ function renderChips() {
     renderResults();
   });
 }
+// statement tables show only the item's name: no brackets, rates or explanations next to it
+const itemLabel = l => String(l).replace(/\s*\([^)]*\)/g, '').replace(/\s*[·:].*$/, '').replace(/\s+/g, ' ').trim();
 function signed(n) { return `<span class="num ${n < 0 ? 'neg' : ''}">${money(n)}</span>`; }
 
 function renderResults() {
@@ -1494,6 +1498,7 @@ function renderResults() {
     ...(r.mainAllocated ? [['حصة الرئيسي (تشغيلية)', 'mainOp', 'indent', -1]] : []),
     ['المصاريف التشغيلية', 'opex', 'sub', -1],
     ['إجمالي المصروفات', 'totalExp', 'sub', -1],
+    ...(SHOWN.some(ce => r.c[ce.id].mgrComm) ? [['صافي الربح قبل عمولة المديرين', 'netBeforeMgr', 'sub'], ['عمولة مديري المتاجر', 'mgrComm', 'indent', -1]] : []),
     ['صافي الربح / الخسارة', 'net', 'sum'],
     ['ضريبة الدخل', 'tax', 'indent', -1],
     ['صافي الربح بعد الضريبة', 'netAfter', 'sum'],
@@ -1502,7 +1507,7 @@ function renderResults() {
   for (const [label, k, cls, sign = 1] of lines) {
     if (!k) { t += `<tr class="sec"><td colspan="${sel.length + 2}">${label}</td></tr>`; continue; }
     const vals = sel.map(ce => (r.c[ce.id][k] || 0) * sign), extra = sharedOnly(k) * sign;
-    t += `<tr class="${cls}"><td>${label}${k === 'tax' && extra ? ` <span class="badge" title="ضريبة راتب المدير العام وأثر المراكز الخاسرة">منها ${money(Math.abs(extra))} على مستوى الشركة</span>` : ''}</td>${vals.map(v => `<td class="n">${signed(v)}</td>`).join('')}<td class="n">${signed(vals.reduce((a, b) => a + b, 0) + extra)}</td></tr>`;
+    t += `<tr class="${cls}"><td>${esc(itemLabel(label))}</td>${vals.map(v => `<td class="n">${signed(v)}</td>`).join('')}<td class="n">${signed(vals.reduce((a, b) => a + b, 0) + extra)}</td></tr>`;
   }
   const revs = sel.map(ce => r.c[ce.id].revenue), nets = sel.map(ce => r.c[ce.id].net);
   t += `<tr><td>هامش صافي الربح</td>${sel.map((ce, i) => `<td class="n num">${pct(nets[i], revs[i])}</td>`).join('')}<td class="n num">${pct(nets.reduce((a, b) => a + b, 0), revs.reduce((a, b) => a + b, 0))}</td></tr>`;
@@ -1616,7 +1621,7 @@ function renderStatement() {
   if (isWs) renderWholesale();
 
   const rev = x.revenue, exp = x.totalExp;
-  const row = (label, v, cls = 'indent', withPct = 'both') => `<tr class="${cls}"><td>${esc(label)}</td><td class="n">${signed(v)}</td>` +
+  const row = (label, v, cls = 'indent', withPct = 'both') => `<tr class="${cls}"><td>${esc(itemLabel(label))}</td><td class="n">${signed(v)}</td>` +
     (withPct === 'rev' ? `<td></td><td class="n num">${pct(v, rev)}</td>` : withPct === 'both' ? `<td class="n num">${pct(v, exp)}</td><td class="n num">${pct(v, rev)}</td>` : '<td></td><td></td>') + '</tr>';
   const lines = cat => {
     const agg = {};
@@ -1650,7 +1655,11 @@ function renderStatement() {
   if (!R.archive) t += row('مستلزمات التغليف (بعدد الطلبات)', x.packAlloc);
   if (x.mainOp) { t += row(`حصة الرئيسي من المصاريف التشغيلية (${fmt(x.mainShare * 100, 1)}%)`, x.mainOp); poolDetail('op'); }
   t += row('إجمالي المصروفات', exp, 'sub');
-  t += row('صافي الربح / الخسارة', x.net, 'sum', 'rev');
+  if (x.mgrComm) {
+    t += row('صافي الربح / الخسارة', x.netBeforeMgr, 'sum', 'rev');
+    t += row(`عمولة مدير المتجر (${COMMISSIONS.managerPct}% من صافي الربح)`, -x.mgrComm, 'indent', 'rev');
+    t += row('صافي الربح بعد العمولة (قبل الضريبة)', x.net, 'sum', 'rev');
+  } else t += row('صافي الربح / الخسارة', x.net, 'sum', 'rev');
   if (x.tax) t += row('ضريبة الدخل (حصة المركز)', -x.tax, 'indent', 'rev');
   t += row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'rev');
   t += '</tbody></table>';
@@ -1661,7 +1670,7 @@ function renderStatement() {
     ${row('خدمات الشحن الخارجي', x.delOut, '', 'none')}${row('إيراد التوصيل داخل الرياض', x.delIn, '', 'none')}
     ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${split ? split.map(([label, v]) => row(label, v, '', 'none')).join('') : Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}${x.mainRev ? row('حصة الرئيسي من الإيرادات', x.mainRev, '', 'none') : ''}
     ${row('إجمالي الإيرادات', rev, 'sub', 'none')}${row('المصاريف الإدارية', x.adminT, '', 'none')}${row('المصاريف التشغيلية', x.opex, '', 'none')}
-    ${row('إجمالي المصروفات', exp, 'sub', 'none')}${row('صافي الربح / الخسارة', x.net, 'sum', 'none')}${x.tax ? row('ضريبة الدخل (حصة المركز)', -x.tax, '', 'none') : ''}${row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
+    ${row('إجمالي المصروفات', exp, 'sub', 'none')}${x.mgrComm ? row('صافي الربح / الخسارة', x.netBeforeMgr, 'sum', 'none') + row('عمولة مدير المتجر', -x.mgrComm, '', 'none') + row('صافي الربح بعد العمولة (قبل الضريبة)', x.net, 'sum', 'none') : row('صافي الربح / الخسارة', x.net, 'sum', 'none')}${x.tax ? row('ضريبة الدخل (حصة المركز)', -x.tax, '', 'none') : ''}${row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
 
   // Sales by category: the current month next to the last saved months
   const cur = R.cats[stCenter] || {};
@@ -1708,7 +1717,7 @@ function beParts(x) {
   const variable = x.cogs + (x.fuelAlloc || 0) + (x.vehAlloc || 0) + (x.packAlloc || 0) + varLines;
   const adj = x.beAdj || 0;   // owner's salary booked as drawings, counted as a fixed cost for the break-even only
   const ads = (x.lines || []).filter(l => l.cat === 'expense' && ADS_EXP.test(norm(l.account)) && !VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
-  return { rev: x.revenue, variable, fixed: x.totalExp - variable + adj, ads, net: x.net - adj, adj };
+  return { rev: x.revenue, variable, fixed: x.totalExp - variable + adj, ads, net: (x.netBeforeMgr ?? x.net) - adj, adj };
 }
 const beMix = {};   // per center: { category: share } chosen in the simulator (this session only)
 function renderBreakeven(ce, x) {
