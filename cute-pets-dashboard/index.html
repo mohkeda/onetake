@@ -366,7 +366,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
       </div>
 
       <div class="card">
-        <div class="card-head"><h2>المصاريف الثابتة الشهرية</h2><p>غير مسجلة في إدارة بعد: تُحتسب كل شهر على كل مركز بمبلغه، وتحل محل نفس الحسابات إن ظهرت في قائمة الدخل من إدارة (إيجار الجملة يبقى من إدارة)</p></div>
+        <div class="card-head"><h2>المصاريف الثابتة الشهرية</h2><p>غير مسجلة في إدارة بعد: تُحتسب كل شهر على كل مركز بمبلغه، وتحل محل نفس الحسابات إن ظهرت في قائمة الدخل من إدارة</p></div>
         <div class="table-wrap" id="fixedTable"></div>
       </div>
 
@@ -832,17 +832,16 @@ function mainDirect(r) {
 /* ---------- fixed monthly expenses ---------- */
 // Monthly fixed expenses not yet booked in Edara, per center (amounts as in August 2026, approved for September).
 // Each replaces the same accounts in Edara's statement if they appear there, so nothing is counted twice.
-// Wholesale rent is its own expense and stays as booked in Edara.
 // Entry: ['name', { center: monthly amount }, 'Edara accounts it replaces (normalized regex)']
 const FIXED_DEFAULT = [
-  ['الإيجار', { exhibit: 10416.66, cpstore: 5208.33, hamtaro: 5208.33 }, 'ايجار'],
+  ['الإيجار', { exhibit: 10416.66, cpstore: 5208.33, hamtaro: 5208.33, wholesale: 1750 }, 'ايجار'],   // wholesale: 1,750 a month (Edara booked three months at once)
   ['أتعاب المحاسب القانوني', { exhibit: 361.11, cpstore: 361.11, hamtaro: 361.11 }, 'محاسب'],
   ['اشتراك سلة', { cpstore: 249, hamtaro: 249, wagy: 249 }, 'اشتراك سل'],
   ['إهلاك سيارات', { cpstore: 404.36, hamtaro: 404.36, wagy: 404.36 }, 'اهلاك'],
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
 ].map(([name, by, re]) => ({ name, by, re }));
-const fixedList = () => (store.settings.fixed3 || FIXED_DEFAULT);
+const fixedList = () => (store.settings.fixed4 || FIXED_DEFAULT);
 // Al Rajhi loan (625,000, 24 installments of 31,810.07 on the 15th). The expense is the profit part of the
 // month's installment («خدمة القرض»), split equally on the exhibit, Cute and Hamtaro as before; the principal is not an expense.
 const LOAN_PROFIT = { '2026-09': 7043.14, '2026-10': 6413.73, '2026-11': 6201.35, '2026-12': 5585.43, '2027-01': 5331.53, '2027-02': 4887.20,
@@ -854,7 +853,7 @@ const LOAN_CENTERS = ['exhibit', 'cpstore', 'hamtaro'];
 const LOAN_FIX = { '2026-05': 8367.85, '2026-07': 7604.60, '2026-08': 7451.89 };
 function fixedMatch(account, center) {
   const t = norm(account);
-  return fixedList().find(f => f.re && new RegExp(f.re).test(t) && !(f.re === 'ايجار' && center === 'wholesale'));
+  return fixedList().find(f => f.re && new RegExp(f.re).test(t));
 }
 
 /* ---------- payroll (rules come from the sheet's notes) ---------- */
@@ -1882,7 +1881,7 @@ function renderInputs() {
   $('#up-sales .status').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { S.sales.splice(+b.dataset.rm, 1); raw.sales?.splice(+b.dataset.rm, 1); refresh(); });
 
   // fixed expenses: editable amounts, and the Edara lines they replaced this month
-  const FL = fixedList(), FR = R.fixedReplaced || [], FC = CENTERS.filter(ce => !ce.shared && ce.id !== 'wholesale');
+  const FL = fixedList(), FR = R.fixedReplaced || [], FC = CENTERS.filter(ce => !ce.shared);
   const fsum = f => Object.values(f.by || {}).reduce((a, v) => a + (+v || 0), 0);
   $('#fixedTable').innerHTML = !FL.length ? '<div class="empty">لا توجد مصاريف ثابتة حاليًا. لا يُستبعد شيء من قائمة الدخل.</div>' : `<table><thead><tr><th>المصروف</th>${FC.map(ce => `<th class="n">${ce.short}</th>`).join('')}<th class="n">الإجمالي</th><th>يحل محل (من إدارة هذا الشهر)</th></tr></thead><tbody>${FL.map((f, i) => {
     const rep = FR.filter(x => x.by === f.name);
@@ -1891,7 +1890,7 @@ function renderInputs() {
   $('#fixedTable').querySelectorAll('[data-fx]').forEach(inp => inp.onchange = () => {
     const list = fixedList().map(f => ({ ...f, by: { ...f.by } }));
     list[+inp.dataset.fx].by[inp.dataset.fc] = +inp.value || 0;
-    store.settings.fixed3 = list; persist(); refresh();
+    store.settings.fixed4 = list; persist(); refresh();
   });
 
   // classification table
