@@ -861,6 +861,9 @@ function fixedMatch(account, center) {
 const COMMISSIONS = { managerPct: 5, importPct: 2, fishPct: 0.65, perRiyadhOrder: 0.5 };
 // Tayar (delivery management platform): each store's monthly invoice, and the drivers' delivered orders per store from
 // its drivers report (one driver works for all three stores). A store without a report falls back to its Riyadh orders in Salla.
+// Actual fuel for the month from the PetroApp invoice (before VAT, which is recovered); it replaces Edara's fuel lines.
+// Vehicle maintenance stays as booked in Edara.
+const FUEL_ACTUAL = { '2026-09': 2054.94 };
 const TAYAR_INVOICES = { '2026-09': { cpstore: 113, hamtaro: 210, wagy: 58 } };
 const DRIVER_ORDERS = { '2026-09': { cpstore: { 'ميزان': 142, 'دادو': 96 }, hamtaro: { 'ميزان': 254, 'دادو': 205 }, wagy: { 'ميزان': 69, 'دادو': 47 } } };
 
@@ -1031,7 +1034,7 @@ function compute() {
   const fuelIS = CENTERS.reduce((s, ce) => s + c[ce.id].fuelOwn, 0);
   const vehTotal = CENTERS.reduce((s, ce) => s + c[ce.id].vehOwn, 0);   // vehicle maintenance follows fuel
   const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0);
-  const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : fuelIS;
+  const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : FUEL_ACTUAL[curMonthKey()] ?? fuelIS;
   const packTotal = set.packManual !== '' && set.packManual != null ? +set.packManual : packIS;
   for (const ce of CENTERS) {
     const x = c[ce.id];
