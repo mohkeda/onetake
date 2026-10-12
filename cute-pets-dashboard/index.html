@@ -490,7 +490,7 @@ function classify(account, group) {
   if (has('تغليف', 'تعبئه', 'اكياس', 'كراتين', 'packaging')) return 'pack';
   if (has('تكلفه', 'تكلفة') && has('جمله')) return 'wscost';
   if (has('تكلفه') && has('بضاعه', 'مبيعات', 'مباعه')) return 'cogs';
-  if (has('تسويه المخزون', 'تسوية المخزون')) return 'cogs';
+  if (has('تسويه المخزون', 'تسوية المخزون', 'تسويات المخزون')) return 'ignore';   // inventory adjustment, not a real profit or loss
   if (has('مردود')) return 'contra';
   if (group === 'admin') return 'admin';
   if (group === 'op') return 'expense';
