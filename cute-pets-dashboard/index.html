@@ -425,6 +425,7 @@ const CATS = {
   admin:    'مصروف إداري',
   expense:  'مصروف تشغيلي',
   fuel:     'محروقات (تُوزَّع)',
+  vehicle:  'صيانة سيارات (تُوزَّع مع المحروقات)',
   pack:     'تغليف (يُوزَّع)',
   ignore:   'تجاهل',
 };
@@ -485,6 +486,7 @@ function classify(account, group) {
   const t = norm(account);
   const has = (...ws) => ws.some(w => t.includes(norm(w)));
   if (has('محروقات', 'وقود', 'بنزين', 'ديزل', 'fuel')) return 'fuel';
+  if (has('صيانه سيارات', 'صيانه السيارات', 'اصلاح سيارات')) return 'vehicle';
   if (has('تغليف', 'تعبئه', 'اكياس', 'كراتين', 'packaging')) return 'pack';
   if (has('تكلفه', 'تكلفة') && has('جمله')) return 'wscost';
   if (has('تكلفه') && has('بضاعه', 'مبيعات', 'مباعه')) return 'cogs';
@@ -781,7 +783,7 @@ function compute() {
   const set = store.settings;
   const c = {};
   for (const ce of CENTERS) c[ce.id] = { salesRev: 0, otherRev: 0, delIn: 0, delOut: 0, delInIS: 0, delOutIS: 0, cogsIS: 0, admin: 0, expenses: 0,
-    fuelOwn: 0, packOwn: 0, fuelAlloc: 0, packAlloc: 0, ordIn: 0, ordOut: 0, ordPick: 0, lines: [],
+    fuelOwn: 0, packOwn: 0, vehOwn: 0, fuelAlloc: 0, packAlloc: 0, vehAlloc: 0, ordIn: 0, ordOut: 0, ordPick: 0, lines: [],
     kept: { rev: 0, admin: 0, op: 0 }, mainRev: 0, mainAdmin: 0, mainOp: 0, mainShare: 0 };
   // Lines of the shared center that are NOT distributed to the stores (e.g. government fees).
   const keepWords = String(set.mainKeep || '').split(/[,،]/).map(norm).filter(Boolean);
@@ -813,6 +815,7 @@ function compute() {
     else if (cat === 'other') x.otherRev += a;
     else if (cat === 'cogs') x.cogsIS += a;
     else if (cat === 'fuel') x.fuelOwn += a;
+    else if (cat === 'vehicle') x.vehOwn += a;
     else if (cat === 'pack') x.packOwn += a;
     else if (cat === 'admin') x.admin += a;
     else if (cat === 'expense') x.expenses += a;
@@ -860,16 +863,18 @@ function compute() {
   const totAll = DC.reduce((s, ce) => s + c[ce.id].ordAll, 0);
   const salesDC = DC.reduce((s, ce) => s + Math.max(0, c[ce.id].salesRev), 0);
   const fuelIS = CENTERS.reduce((s, ce) => s + c[ce.id].fuelOwn, 0);
+  const vehTotal = CENTERS.reduce((s, ce) => s + c[ce.id].vehOwn, 0);   // vehicle maintenance follows fuel
   const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0);
   const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : fuelIS;
   const packTotal = set.packManual !== '' && set.packManual != null ? +set.packManual : packIS;
   for (const ce of CENTERS) {
     const x = c[ce.id];
-    x.fuelAlloc = 0; x.packAlloc = 0;
+    x.fuelAlloc = 0; x.packAlloc = 0; x.vehAlloc = 0;
     if (ce.delivery) {
       // by orders when the orders report is in; otherwise by sales share among the online stores
       const sShare = salesDC ? Math.max(0, x.salesRev) / salesDC : 0;
       x.fuelAlloc = fuelTotal * (hasOrders && totIn ? x.ordIn / totIn : sShare);
+      x.vehAlloc = vehTotal * (hasOrders && totIn ? x.ordIn / totIn : sShare);
       x.packAlloc = packTotal * (hasOrders && totAll ? x.ordAll / totAll : sShare);
     }
     x.svcDiff = 0;
@@ -956,7 +961,7 @@ function compute() {
     x.cogs = x.cogsMain + x.cogsWs;
     x.gross = x.revenue - x.cogs;
     x.adminT = x.admin + x.mainAdmin;
-    x.opex = x.cogs + x.fuelAlloc + x.packAlloc + x.expenses + x.mainOp;
+    x.opex = x.cogs + x.fuelAlloc + x.vehAlloc + x.packAlloc + x.expenses + x.mainOp;
     x.totalExp = x.adminT + x.opex;
     x.net = x.revenue - x.totalExp;
   };
@@ -987,11 +992,11 @@ function compute() {
       const pool = { rev: M.revenue - M.kept.rev, admin: M.adminT - M.kept.admin, op: M.opex - M.kept.op };
       for (const { x, b } of recips) { x.mainShare = b / B; x.mainRev = pool.rev * x.mainShare; x.mainAdmin = pool.admin * x.mainShare; x.mainOp = pool.op * x.mainShare; }
       // keep the pooled lines so each center's statement can show what its share is made of
-      mainPool = M.lines.filter(l => !isKept(l.account) && l.cat !== 'fuel' && l.cat !== 'pack').map(l => ({
+      mainPool = M.lines.filter(l => !isKept(l.account) && l.cat !== 'fuel' && l.cat !== 'pack' && l.cat !== 'vehicle').map(l => ({
         grp: ['sales', 'contra', 'other', 'delivery'].includes(l.cat) ? 'rev' : l.cat === 'admin' ? 'admin' : 'op',
         label: /دعاي/.test(norm(l.account)) && l.amount < 0 ? `${l.account} (كاش باك منصة درب)` : l.account, amount: l.amount }));
       // the shared center keeps only the excluded lines
-      Object.assign(M, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: M.kept.rev, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, packAlloc: 0,
+      Object.assign(M, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: M.kept.rev, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, vehAlloc: 0, packAlloc: 0,
         admin: M.kept.admin, expenses: M.kept.op, lines: M.lines.filter(l => isKept(l.account)) });
       mainAllocated = true;
       CENTERS.forEach(ce => finalize(c[ce.id]));
@@ -1193,6 +1198,7 @@ function renderResults() {
     ['تكلفة البضاعة المباعة', 'cogsMain', 'indent', -1],
     ['تكلفة بضاعة الجملة', 'cogsWs', 'indent', -1],
     ['محروقات (بعدد طلبات الرياض)', 'fuelAlloc', 'indent', -1],
+    ['صيانة السيارات (بعدد طلبات الرياض)', 'vehAlloc', 'indent', -1],
     ['مستلزمات التغليف (بعدد الطلبات)', 'packAlloc', 'indent', -1],
     ['مصاريف تشغيلية أخرى', 'expenses', 'indent', -1],
     ...(r.mainAllocated ? [['حصة الرئيسي (تشغيلية)', 'mainOp', 'indent', -1]] : []),
@@ -1271,7 +1277,7 @@ function renderStatement() {
   const dl = [];
   if (x.ordAll) dl.push(['طلبات داخل الرياض', fmt(x.ordIn), ''], ['طلبات خارج الرياض', fmt(x.ordOut), ''], ...(x.ordPick ? [['استلام من الفرع', fmt(x.ordPick), '']] : []),
     ['إيراد التوصيل داخل الرياض', money(x.delIn), ''], ['خدمات الشحن الخارجي', money(x.delOut), ''],
-    ['نسبة تحمل المحروقات', pct(x.ordIn, R.totIn), money(x.fuelAlloc)], ['نسبة تحمل التغليف', pct(x.ordAll, R.totAll), money(x.packAlloc)]);
+    ['نسبة تحمل المحروقات', pct(x.ordIn, R.totIn), money(x.fuelAlloc)], ...(x.vehAlloc ? [['صيانة السيارات (نفس النسبة)', pct(x.ordIn, R.totIn), money(x.vehAlloc)]] : []), ['نسبة تحمل التغليف', pct(x.ordAll, R.totAll), money(x.packAlloc)]);
   if (x.mainShare) dl.push(['حصة مصاريف الرئيسي', `${fmt(x.mainShare * 100, 1)}%`, money(x.mainAdmin + x.mainOp - x.mainRev)]);
   $('#cDelCard').hidden = !dl.length;
   $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
@@ -1341,6 +1347,7 @@ function renderStatement() {
   t += row('تكلفة بضاعة الجملة', x.cogsWs);
   for (const [a, v] of lines('expense')) t += row(a, v);
   t += row('محروقات (بعدد طلبات الرياض)', x.fuelAlloc);
+  if (x.vehAlloc) t += row('صيانة السيارات (بعدد طلبات الرياض)', x.vehAlloc);
   t += row('مستلزمات التغليف (بعدد الطلبات)', x.packAlloc);
   if (x.mainOp) { t += row(`حصة الرئيسي من المصاريف التشغيلية (${fmt(x.mainShare * 100, 1)}%)`, x.mainOp); poolDetail('op'); }
   t += row('إجمالي المصروفات', exp, 'sub');
@@ -1399,7 +1406,7 @@ function renderBreakeven(ce, x) {
   $('#cBeCard').hidden = !names.length || ce.id === 'wholesale';
   if ($('#cBeCard').hidden) return;
   const S = names.reduce((a, k) => a + sales[k], 0), C = names.reduce((a, k) => a + (cost[k] || 0), 0);
-  const varExp = x.fuelAlloc + x.packAlloc + x.lines.filter(l => l.cat === 'expense' && VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
+  const varExp = x.fuelAlloc + x.vehAlloc + x.packAlloc + x.lines.filter(l => l.cat === 'expense' && VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
   const vr = varExp / S;
   const otherIncome = x.revenue - x.revMain - x.revBrand;                    // delivery, services, other income
   const fixed = x.totalExp - x.cogs - varExp - otherIncome;                  // what the goods margin must cover
