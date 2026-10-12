@@ -410,7 +410,8 @@ const WS_SECTIONS = [
   ['كانيفا جاف 2 كجم', 1, null, null],   // only in the old list so far
 ].map(([name, items, piece, carton]) => ({ name, items, piece, carton }));
 // other names a line also covers: Kaniva 370 g takes the 300 g price, 1.3 kg the 1 kg price
-const WS_ALIASES = { 'كانيفا جاف 300 جم': ['كانيفا 370 جم'], 'كانيفا جاف 1 كجم': ['كانيفا 1.3 كجم'], 'كانيفا جاف 2 كجم': ['كانيفا 2.3 كجم'] };
+const WS_ALIASES = { 'كانيفا جاف 300 جم': ['كانيفا 370 جم'], 'كانيفا جاف 1 كجم': ['كانيفا 1.3 كجم', 'كانيفا 1.2 كجم'],
+  'كانيفا جاف 2 كجم': ['كانيفا 2.3 كجم', 'كانيفا 2.5 كجم', 'كانيفا 2.7 كجم', 'كانيفا 2.8 كجم'], 'كانيفا جاف 8 كجم': ['كانيفا 7 كجم'] };
 // The list above applies from September 2026. Months before it use the old prices below; a line not
 // listed here kept the same price.
 const WS_PRICES_FROM = '2026-09';
