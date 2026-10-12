@@ -447,6 +447,10 @@ const CATS = {
 const LS_KEY = 'cutepets-dashboard-v4';
 // Real months baked into the published page (never into the repository); see build_publish.py.
 const SEED_MONTHS = /*SEED*/null/*END*/;
+// Single-center report: { center, months: { 'YYYY-MM': snapshot } }. Built from the full dashboard with
+// build_center_reports.mjs; it holds that center's computed results only, never another center's data.
+const LOCK = /*LOCK*/null/*END*/;
+const histSrc = () => LOCK ? LOCK.hist : store.history;
 function expandSeed(d) {
   // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup]
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
@@ -1318,8 +1322,9 @@ function renderStatement() {
   $('#payWarn').hidden = !R.payrollMissing;
 
   // KPIs with the change from the previous saved month
-  const prevKey = Object.keys(store.history).filter(k => k < mo).sort().pop();
-  const prev = prevKey ? store.history[prevKey][stCenter] : null;
+  const H = histSrc();
+  const prevKey = Object.keys(H).filter(k => k < mo).sort().pop();
+  const prev = prevKey ? H[prevKey][stCenter] : null;
   const delta = (cur, k, upGood = true) => {
     if (!prev || prev[k] == null) return '';
     const d = cur - prev[k], good = upGood ? d >= 0 : d <= 0;
@@ -1333,8 +1338,8 @@ function renderStatement() {
   ].map(([l, v, k, sub, up]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${v < 0 ? 'neg' : ''}">${money(v)}</div><div class="sub">${sub}</div>${delta(v, k, up)}</div>`).join('');
 
   // monthly trend for this center
-  const hist = { ...store.history };
-  if (R.hasIS) hist[mo] = summary(R);
+  const hist = { ...H };
+  if (!LOCK && R.hasIS) hist[mo] = summary(R);
   const hm = Object.keys(hist).sort().slice(-12);
   lineChart($('#chartCenterTrend'), hm, [{ id: stCenter, label: 'صافي الربح', color: ce.color, values: hm.map(k => hist[k][stCenter]?.net || 0) }]);
 
@@ -1431,8 +1436,9 @@ function renderStatement() {
 
   // Sales by category: the current month next to the last saved months
   const cur = R.cats[stCenter] || {};
-  const prevMonths = Object.keys(store.history).filter(k => k < mo && Object.keys(store.history[k][stCenter]?.cats || {}).length).sort().slice(-3);
-  const cols = [...prevMonths.map(k => ({ label: monthLabel(k), data: store.history[k][stCenter].cats })), { label: monthLabel(mo), data: cur }];
+  const HC = histSrc();
+  const prevMonths = Object.keys(HC).filter(k => k < mo && Object.keys(HC[k][stCenter]?.cats || {}).length).sort().slice(-3);
+  const cols = [...prevMonths.map(k => ({ label: monthLabel(k), data: HC[k][stCenter].cats })), { label: monthLabel(mo), data: cur }];
   const names = [...new Set(cols.flatMap(c => Object.keys(c.data)))].sort((a, b) => (cur[b] || 0) - (cur[a] || 0));
   if (!names.length) { $('#stCats').innerHTML = '<div class="empty">أضف عمود التصنيف في تقرير مبيعات هذا المركز لعرض المبيعات حسب التصنيف</div>'; return; }
   const totCur = Object.values(cur).reduce((a, b) => a + b, 0), maxShare = Math.max(...names.map(n => (cur[n] || 0) / (totCur || 1)));
@@ -1891,7 +1897,7 @@ function openMonth(m) {
     S = blankMonth();
     if (prev) S.cls = { ...store.months[prev].data.cls };
   }
-  store.lastMonth = m; persist();
+  store.lastMonth = m; $('#month').value = m; persist();   // keep the picker in step, or refresh() saves this month under the old one
   refresh();
 }
 
@@ -1964,11 +1970,38 @@ $('#importBackup').onchange = async e => {
   e.target.value = '';
 };
 
+/* ---------- single-center snapshot (used to build per-center reports) ---------- */
+window.__cpSnapshot = cid => {
+  const only = o => (o && o[cid] ? { [cid]: o[cid] } : {});
+  const geoOnly = list => list.filter(it => (it.n || {})[cid]).map(it => ({ name: it.name, at: it.at, n: { [cid]: it.n[cid] }, f: { [cid]: (it.f || {})[cid] || 0 } }));
+  const ws = cid === 'wholesale' ? { ...R.ws, missingImport: [...R.ws.missingImport] } : { matrix: only(R.ws.matrix), byBrand: {}, bySection: {}, unmatched: {}, missingImport: [] };
+  return JSON.parse(JSON.stringify({
+    c: { [cid]: R.c[cid] }, ws, cats: only(R.cats), catCost: only(R.catCost), svcs: only(R.svcs),
+    geo: R.geo ? { cities: geoOnly(R.geo.cities), districts: geoOnly(R.geo.districts) } : null,
+    mainPool: R.mainPool, mainAllocated: R.mainAllocated, mode: R.mode, xfer: R.xfer, hasIS: R.hasIS, hasOrders: R.hasOrders, hasSales: R.hasSales,
+    payrollMissing: R.payrollMissing, totIn: R.totIn, totAll: R.totAll, summary: summary(R)[cid],
+  }));
+};
+
 /* ---------- boot ---------- */
 const startMonth = store.lastMonth || curMonth();
 $('#month').value = startMonth;
 const hasAny = Object.keys(store.months).length || Object.keys(store.history).length;
-if (SEED_MONTHS) {
+if (LOCK) {
+  // single-center report: no inputs, no other centers, months chosen from the snapshot
+  const ce = CMAP[LOCK.center], months = Object.keys(LOCK.months).sort();
+  LOCK.hist = Object.fromEntries(months.map(m => [m, { [LOCK.center]: LOCK.months[m].summary }]));
+  document.title = `تقرير ${ce.name}`;
+  $('h1').textContent = `تقرير ${ce.name}`;
+  ['#tabs', '#saveMonth', '#loadDemo', '#demoBadge', '#tab-inputs', '#tab-results'].forEach(id => { const e = $(id); if (e) e.hidden = true; });
+  $('#centerSel').closest('.field').hidden = true;
+  const sel = document.createElement('select'); sel.id = 'month';
+  sel.innerHTML = months.map(m => `<option value="${m}">${monthLabel(m)}</option>`).join('');
+  $('#month').replaceWith(sel); sel.value = months[months.length - 1];
+  stCenter = LOCK.center;
+  const show = () => { R = LOCK.months[sel.value]; document.querySelectorAll('section.panel').forEach(p => p.hidden = p.id !== 'tab-center'); renderStatement(); };
+  sel.onchange = show; show();
+} else if (SEED_MONTHS) {
   $('#loadDemo').hidden = true;   // real data is in: no demo button that could overwrite a month
   // install the real months once; months the viewer uploaded themselves are never overwritten
   for (const [m, d] of Object.entries(SEED_MONTHS)) {
@@ -1983,7 +2016,7 @@ if (SEED_MONTHS) {
   openMonth(store.lastMonth && store.months[store.lastMonth] ? store.lastMonth : Object.keys(SEED_MONTHS).sort().pop());
   $('#month').value = store.lastMonth;
 } else if (!hasAny) loadDemo(); else openMonth(startMonth);
-{ let t = 'results'; try { t = sessionStorage.getItem('cp-tab') || t; } catch (e) {} showTab(document.querySelector(`.tab[data-tab="${t}"]`) || $('.tab[data-tab="results"]')); }
+if (!LOCK) { let t = 'results'; try { t = sessionStorage.getItem('cp-tab') || t; } catch (e) {} showTab(document.querySelector(`.tab[data-tab="${t}"]`) || $('.tab[data-tab="results"]')); }
 if (typeof XLSX === 'undefined') toast('تعذّر تحميل قارئ ملفات Excel، تحقق من الاتصال');
 })();
 </script>
