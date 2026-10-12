@@ -1169,6 +1169,13 @@ function applyArchive(R, A) {
       else if (has(acc, 'تكلفه البضاعه المباعه')) x.cogsMain += v;
       else if (v) { x.expenses += v; x.lines.push({ account: acc, cat: 'expense', amount: v }); }
     }
+    // wholesale had no sheet in the workbook: with the sales report, its gross profit comes from it
+    // (brands sold to the stores at the list price, plus direct wholesale sales, less import cost), no expenses, as in the old report
+    if (ce.id === 'wholesale' && withSales && !a) {
+      const brand = R.salesCalc.wholesale.revBrand;
+      x.revBrand = brand; x.revMain = Math.max(0, R.ws.rev - brand); x.cogsMain = R.ws.imp;
+      if (R.ws.rev) x.lines.push({ account: 'مصاريف الجملة غير مسجلة لهذا الشهر (مجمل ربح فقط كالتقرير السابق)', cat: 'admin', amount: 0 });
+    }
     x.salesRev = x.revMain + x.revBrand;
     x.delivery = x.delIn + x.delOut;
     x.revenue = x.revMain + x.revBrand + x.delivery + x.otherRev;
@@ -1394,7 +1401,7 @@ function renderResults() {
   const notes = [];
   if (r.payrollMissing) notes.push('⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب');
   if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يتحمل ${fmt(r.tax.rate * 100)}% من ربحه فقط، والباقي ${money(r.tax.total - r.tax.borne)} على الرئيسي`);
-  if (r.archive) notes.push('شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
+  if (r.archive) notes.push(r.salesCalc ? 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة: مجمل الربح من تقرير المبيعات بأسعار الجملة القديمة، بدون مصاريف كالتقرير السابق' : 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
   if (r.mainAllocated) notes.push(`مصاريف الرئيسي موزعة ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}${store.settings.mainKeep ? ` ما عدا: ${store.settings.mainKeep}` : ''}`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
