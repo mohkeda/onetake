@@ -110,6 +110,19 @@ table.rep tr.rep-cost td { background: color-mix(in srgb, var(--s4) 9%, transpar
 table.rep tr.rep-profit td { background: color-mix(in srgb, var(--s3) 16%, transparent); }
 table.rep tr.rep-store td { background: color-mix(in srgb, var(--s1) 14%, transparent); }
 table.rep tr.rep-total td { background: color-mix(in srgb, var(--s7, #6250d6) 16%, transparent); font-weight: 700; }
+.geo-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; margin-top: 8px; }
+@media (max-width: 820px) { .geo-grid { grid-template-columns: 1fr; } }
+svg.map { width: 100%; height: auto; display: block; }
+svg.map text { font-family: var(--font-body); fill: var(--ink-2); font-size: 11px; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.bubble { fill-opacity: .55; stroke-width: 1.5; cursor: pointer; }
+.bubble:hover { fill-opacity: .85; }
+.zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.zone { background: var(--surface-2); border-radius: 8px; padding: 6px 10px; font-size: .8rem; color: var(--muted); }
+.zone b { display: block; font-family: var(--font-display); font-size: 1.1rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+.zbar { height: 4px; border-radius: 2px; margin-top: 4px; }
+.geo-rank { max-height: 430px; overflow: auto; }
+.geo-sec { margin-top: 18px; }
+.geo-sec h3 { margin-bottom: 4px; }
 tr.sec td { font-family: var(--font-display); font-weight: 600; color: var(--accent); padding-top: 12px; }
 .bar { display: inline-block; height: 10px; border-radius: 0 3px 3px 0; background: var(--s1); vertical-align: middle; }
 tr.sub td { font-weight: 600; }
@@ -198,6 +211,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="card-head"><h2>قائمة الدخل حسب مراكز البيع</h2><p id="plNote"></p></div>
         <div class="table-wrap" id="plTable"></div>
       </div>
+      <div class="card geo-card" id="geoAll"></div>
       <div class="card">
         <div class="card-head"><h2>التوصيل ونسب التحمل</h2><p>المحروقات بعدد طلبات داخل الرياض، والتغليف بعدد كل الطلبات، على المتاجر الإلكترونية فقط (المعرض لا يتحمل)</p></div>
         <div class="table-wrap" id="delTable"></div>
@@ -228,6 +242,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
           </div>
         </div>
       </div>
+      <div class="card geo-card" id="geoStore" hidden></div>
       <div class="card">
         <div class="card-head"><h2>المبيعات حسب التصنيف</h2><p>من عمود التصنيف في تقرير المبيعات، أو العلامة التجارية إن لم يوجد</p></div>
         <div class="table-wrap" id="stCats"></div>
@@ -438,6 +453,7 @@ function expandSeed(d) {
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cancelled: !!ca, pickup: !!pu })) })) },
     sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost, category = '', store = '', service = 0]) => ({ store, code: '', name, brand, category, qty, sales, bookCost, service: !!service })) })),
     payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost], i) => ({ name: `موظف ${i + 1}`, cc, note, cost })) } : null,
+    geoAgg: d.geo || null,   // per city / Riyadh district totals for the order maps
     costs: null, cls: d.cls || {}, demo: false, k: 1 };
 }
 
@@ -555,6 +571,8 @@ const FIELDS = {
     ['fee', 'رسوم التوصيل', ['تكلفه الشحن', 'رسوم التوصيل', 'قيمه التوصيل', 'رسوم الشحن', 'قيمه الشحن', 'التوصيل', 'الشحن', 'shipping', 'delivery']],
     ['status', 'الحالة', ['حاله الطلب', 'الحاله', 'status']],
     ['ship', 'يتطلب شحن', ['يتطلب شحن', 'requires shipping']],
+    ['addr', 'عنوان العميل', ['عنوان العميل', 'العنوان']],
+    ['maplink', 'رابط الموقع', ['رابط موقع العميل علي الخريطه', 'رابط الموقع']],
   ],
   sales: [
     ['store', 'المتجر', ['sales store', 'المتجر', 'الفرع', 'نقطه البيع', 'store', 'branch']],
@@ -689,7 +707,7 @@ function parseTable(kind, aoa, mapOverride) {
       const ship = norm(get(r, 'ship'));
       rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), fee: toNum(get(r, 'fee')),
         cancelled: /ملغ|الغاء|محذوف|مسترجع|مرتجع|بانتظار الدفع|cancel|deleted|refund/.test(status),
-        pickup: ship === 'لا' || ship === 'no' });
+        pickup: ship === 'لا' || ship === 'no', ...geoOf(get(r, 'addr'), get(r, 'maplink')) });
     } else if (kind === 'sales') {
       // combined report: service lines carry their name in the service column
       const svc = String(get(r, 'service')).trim();
@@ -790,6 +808,39 @@ function payrollAlloc(rows) {
   return { byCenter, unknown };
 }
 
+/* ---------- order map (area totals only; no individual locations are shown) ---------- */
+const CITY_AR = {"Riyadh": "الرياض", "Jeddah": "جدة", "Mecca": "مكة المكرمة", "Makkah": "مكة المكرمة", "Dammam": "الدمام", "Medina": "المدينة المنورة", "Al Khobar": "الخبر", "Taif": "الطائف", "Buraydah": "بريدة", "Khamis Mushait": "خميس مشيط", "Abha": "أبها", "Al Qatif": "القطيف", "Al Kharj": "الخرج", "Hail": "حائل", "Tabuk": "تبوك", "Jazan": "جازان", "Jizan": "جازان", "Najran": "نجران", "Al Hofuf": "الهفوف", "Hofuf": "الهفوف", "Al Hufuf": "الهفوف", "Al Ahsa": "الأحساء", "Al Mubarraz": "المبرز", "Yanbu": "ينبع", "Madinat Yanbu' as Sina'iyah": "ينبع الصناعية", "Al Jubail": "الجبيل", "Jubail": "الجبيل", "Arar": "عرعر", "Sakaka": "سكاكا", "Unaizah": "عنيزة", "Unayzah": "عنيزة", "Al Majmaah": "المجمعة", "Dhahran": "الظهران", "Hafar Al Batin": "حفر الباطن", "Al Bahah": "الباحة", "Bisha": "بيشة", "Al Makhwah": "المخواة", "Al Qurayyat": "القريات", "Rabigh": "رابغ", "Az Zulfi": "الزلفي", "Ad Diriyah": "الدرعية", "DIRIYAH": "الدرعية", "Al Muzahimiyah": "المزاحمية", "Ras Tanura": "رأس تنورة", "Sabya": "صبيا", "Al Lith": "الليث", "Al Qunfudhah": "القنفذة", "Ar Rass": "الرس", "Shaqra": "شقراء", "Al Wajh": "الوجه", "Duba": "ضباء", "Turaif": "طريف", "Afif": "عفيف", "Wadi ad-Dawasir": "وادي الدواسر", "Al Aflaj": "الأفلاج", "Khafji": "الخفجي", "Al Khafji": "الخفجي", "Saihat": "سيهات", "Tarout": "تاروت", "Abqaiq": "بقيق", "Buqayq": "بقيق", "Al Namas": "النماص", "Ahad Rafidah": "أحد رفيدة", "Muhayil": "محايل", "Baljurashi": "بلجرشي", "Ad Dawadimi": "الدوادمي", "Al Duwadimi": "الدوادمي", "Al Mithnab": "المذنب", "Al Uyaynah": "العيينة", "Al Oyun": "العيون", "AL UYUN": "العيون", "Riyadh Al Khabra": "رياض الخبراء", "Huraymila": "حريملاء", "Al Sulaiyl (Wadi al-Dawasir)": "السليل", "Tanomah": "تنومة", "Badr": "بدر", "Rumah": "رماح", "Safwa": "صفوى", "Ad Dilam": "الدلم", "Khaybar": "خيبر", "Thadiq": "ثادق", "Dumah Al Jandal": "دومة الجندل", "Abu Arish": "أبو عريش", "Sajir": "ساجر", "Qarah": "القارة", "AL BIRK": "البرك", "Al Khabra": "الخبراء", "Ahad Al Masarihah": "أحد المسارحة", "Ash Shimasiyah": "الشماسية", "Al Hadithah": "الحديثة", "QUSAYBA": "قصيباء", "AN NU'AYLAH": "النعيلة", "Uglat Asugour": "عقلة الصقور", "AL JAFR": "الجفر", "Nairyah": "النعيرية", "Almajaridah": "المجاردة", "Al Quzaah": "القزعة", "SHALAL": "الشلال", "Al Kharabah Jizan": "الخربة", "Abu Khayal in Al-Khalij": "أبو خيال", "QANA AL BAHR": "قنا البحر", "Sarat Abidah": "سراة عبيدة", "Howtat Bani Tamim": "حوطة بني تميم", "Hautat Sudair": "حوطة سدير", "Naeem": "نعام", "Sabt Alalayah": "سبت العلايا", "WUTHAYLAN": "وثيلان", "AL MAHALAH": "المحالة", "Al Edabi": "العيدابي", "Farasan Island": "جزيرة فرسان", "Hidaa": "هداء", "AL SIRHAN": "السرحان", "Umluj": "أملج", "Al Aridhah": "العارضة", "AL MALAHAH": "الملاحة", "Al Jumum": "الجموم", "Mumlah": "مملح", "AL QIFAY'": "القفيعة", "Dhahran Al Janub": "ظهران الجنوب", "Bishah": "بيشة", "Tathleeth": "تثليث", "Rafha": "رفحاء", "AL ULA": "العلا", "Al Ula": "العلا", "RAS TANNURAH": "رأس تنورة", "MUHARRAQ": "المحرق", "Al Bijadyah": "البجادية", "Uyun Al Jawa": "عيون الجواء", "Anak": "عنك", "Al Jafr": "الجفر", "Marat": "مرات", "Duhknah": "دخنة", "Al Jesh": "الجش", "As Shamli": "الشملي", "Al Badi'ah": "البديعة", "Almuzaylif": "المظيلف", "Juatha": "جواثا", "Alrayan": "الريان", "AL BASHAIR": "البشائر", "Kuwait": "الكويت", "Bahrain": "البحرين", "Manama": "المنامة", "Al Muharraq": "المحرق", "Ar Rifa": "الرفاع"};
+const KSA_OUTLINE = [[50.809,24.747],[50.881,24.637],[50.928,24.588],[50.978,24.568],[51.04,24.559],[51.097,24.561],[51.148,24.576],[51.216,24.625],[51.27,24.625],[51.306,24.603],[51.295,24.558],[51.302,24.517],[51.36,24.576],[51.396,24.608],[51.443,24.62],[51.482,24.593],[51.443,24.554],[51.41,24.515],[51.335,24.448],[51.306,24.406],[51.299,24.365],[51.277,24.319],[51.346,24.297],[51.389,24.316],[51.479,24.311],[51.526,24.269],[51.569,24.257],[51.576,24.191],[51.572,24.129],[51.594,24.078],[51.652,24.01],[51.702,23.948],[51.756,23.887],[51.806,23.825],[51.86,23.762],[51.911,23.7],[51.965,23.639],[52.015,23.576],[52.069,23.514],[52.12,23.453],[52.174,23.391],[52.224,23.328],[52.278,23.266],[52.328,23.205],[52.379,23.143],[52.433,23.08],[52.483,23.018],[52.537,22.955],[52.584,22.931],[52.742,22.911],[52.883,22.894],[53.023,22.877],[53.16,22.861],[53.3,22.844],[53.441,22.825],[53.578,22.808],[53.718,22.791],[53.855,22.774],[53.995,22.758],[54.136,22.741],[54.272,22.724],[54.413,22.707],[54.55,22.688],[54.69,22.671],[54.83,22.655],[54.967,22.638],[55.104,22.621],[55.187,22.703],[55.252,22.606],[55.331,22.481],[55.414,22.356],[55.493,22.231],[55.572,22.106],[55.626,22.023],[55.637,21.979],[55.601,21.866],[55.568,21.775],[55.54,21.689],[55.504,21.576],[55.46,21.444],[55.41,21.295],[55.356,21.135],[55.302,20.971],[55.248,20.807],[55.194,20.648],[55.147,20.5],[55.1,20.366],[55.064,20.255],[55.036,20.167],[55.018,20.112],[54.978,19.995],[54.827,19.946],[54.658,19.889],[54.485,19.831],[54.316,19.774],[54.143,19.716],[53.974,19.661],[53.801,19.603],[53.632,19.546],[53.459,19.488],[53.29,19.433],[53.117,19.375],[52.944,19.318],[52.775,19.26],[52.602,19.203],[52.433,19.147],[52.26,19.09],[52.091,19.033],[51.979,18.995],[51.821,18.975],[51.659,18.953],[51.5,18.931],[51.338,18.909],[51.18,18.889],[51.022,18.867],[50.86,18.845],[50.701,18.823],[50.539,18.801],[50.381,18.781],[50.219,18.759],[50.06,18.737],[49.898,18.715],[49.74,18.695],[49.578,18.673],[49.419,18.651],[49.257,18.629],[49.128,18.612],[49.034,18.58],[48.991,18.558],[48.847,18.487],[48.674,18.404],[48.483,18.31],[48.314,18.227],[48.185,18.165],[48.084,18.057],[47.994,17.947],[47.835,17.758],[47.688,17.58],[47.591,17.464],[47.526,17.307],[47.457,17.131],[47.429,17.092],[47.313,17.028],[47.191,16.959],[47.13,16.944],[46.997,16.949],[46.885,17.07],[46.813,17.168],[46.748,17.254],[46.709,17.275],[46.489,17.246],[46.323,17.224],[46.079,17.248],[45.891,17.266],[45.643,17.292],[45.431,17.312],[45.384,17.327],[45.222,17.418],[45.164,17.428],[44.999,17.43],[44.847,17.43],[44.646,17.432],[44.563,17.405],[44.466,17.417],[44.405,17.418],[44.307,17.41],[44.232,17.391],[44.171,17.403],[44.12,17.369],[44.084,17.344],[44.019,17.366],[43.965,17.339],[43.94,17.305],[43.897,17.307],[43.893,17.351],[43.847,17.346],[43.767,17.346],[43.688,17.384],[43.62,17.459],[43.577,17.482],[43.505,17.513],[43.454,17.52],[43.389,17.513],[43.303,17.459],[43.217,17.388],[43.166,17.33],[43.224,17.308],[43.253,17.271],[43.202,17.236],[43.155,17.211],[43.152,17.167],[43.123,17.108],[43.13,17.053],[43.137,17.01],[43.116,16.952],[43.112,16.91],[43.134,16.871],[43.159,16.826],[43.206,16.807],[43.191,16.765],[43.17,16.724],[43.184,16.685],[43.123,16.674],[43.08,16.658],[43.047,16.554],[43.015,16.52],[42.972,16.496],[42.918,16.484],[42.907,16.435],[42.871,16.402],[42.788,16.371],[42.781,16.42],[42.788,16.473],[42.741,16.525],[42.723,16.567],[42.727,16.609],[42.738,16.653],[42.713,16.694],[42.705,16.741],[42.673,16.772],[42.637,16.815],[42.597,16.837],[42.543,16.878],[42.554,16.922],[42.547,16.988],[42.522,17.028],[42.475,17.037],[42.439,17.065],[42.421,17.108],[42.41,17.157],[42.356,17.182],[42.385,17.121],[42.374,17.043],[42.356,17.114],[42.338,17.173],[42.32,17.308],[42.309,17.351],[42.317,17.401],[42.309,17.444],[42.27,17.466],[42.155,17.574],[42.122,17.601],[42.097,17.645],[42.054,17.653],[42.0,17.717],[41.939,17.763],[41.87,17.82],[41.809,17.837],[41.777,17.861],[41.741,17.891],[41.676,17.96],[41.676,18.001],[41.651,18.04],[41.607,18.075],[41.586,18.136],[41.561,18.168],[41.521,18.197],[41.499,18.234],[41.499,18.279],[41.471,18.311],[41.453,18.355],[41.442,18.403],[41.438,18.463],[41.413,18.499],[41.377,18.529],[41.355,18.57],[41.312,18.575],[41.269,18.602],[41.24,18.658],[41.211,18.698],[41.237,18.796],[41.247,18.835],[41.215,18.86],[41.172,18.872],[41.139,18.933],[41.143,18.977],[41.157,19.022],[41.175,19.068],[41.129,19.102],[41.085,19.114],[41.057,19.152],[41.042,19.195],[41.042,19.245],[41.013,19.282],[40.985,19.323],[40.959,19.358],[40.941,19.404],[40.956,19.448],[40.949,19.493],[40.859,19.534],[40.783,19.596],[40.801,19.642],[40.797,19.693],[40.743,19.777],[40.675,19.796],[40.643,19.77],[40.621,19.813],[40.563,19.885],[40.527,19.911],[40.535,19.961],[40.491,19.985],[40.455,20.007],[40.419,20.03],[40.394,20.064],[40.351,20.074],[40.268,20.125],[40.232,20.164],[40.196,20.196],[40.149,20.218],[40.117,20.252],[40.085,20.279],[40.045,20.285],[40.002,20.275],[39.926,20.299],[39.948,20.262],[39.825,20.321],[39.779,20.343],[39.746,20.382],[39.674,20.436],[39.588,20.552],[39.566,20.598],[39.537,20.63],[39.527,20.67],[39.494,20.706],[39.505,20.746],[39.458,20.76],[39.422,20.792],[39.447,20.827],[39.411,20.846],[39.361,20.863],[39.339,20.91],[39.296,20.924],[39.267,20.969],[39.26,21.023],[39.239,21.062],[39.185,21.098],[39.167,21.136],[39.167,21.185],[39.127,21.26],[39.08,21.315],[39.159,21.38],[39.174,21.435],[39.149,21.481],[39.141,21.542],[39.102,21.548],[39.087,21.606],[39.087,21.665],[39.08,21.706],[39.109,21.748],[39.066,21.726],[39.044,21.76],[39.033,21.802],[38.979,21.863],[38.951,21.922],[38.933,22.006],[38.987,22.003],[39.012,22.043],[39.033,22.091],[39.044,22.131],[39.033,22.209],[39.073,22.271],[39.084,22.313],[39.123,22.371],[39.138,22.415],[39.102,22.381],[39.084,22.437],[39.073,22.491],[39.08,22.546],[39.066,22.587],[39.037,22.622],[39.012,22.678],[38.987,22.724],[39.015,22.759],[38.965,22.817],[38.969,22.774],[38.929,22.815],[38.85,22.93],[38.915,22.862],[38.958,22.859],[38.936,22.913],[38.904,22.938],[38.875,22.972],[38.835,22.987],[38.778,23.041],[38.803,23.08],[38.803,23.122],[38.763,23.161],[38.731,23.217],[38.702,23.257],[38.681,23.305],[38.673,23.349],[38.648,23.401],[38.637,23.468],[38.612,23.524],[38.601,23.568],[38.558,23.563],[38.594,23.529],[38.54,23.543],[38.54,23.592],[38.493,23.644],[38.472,23.713],[38.461,23.761],[38.436,23.803],[38.389,23.825],[38.364,23.87],[38.321,23.887],[38.285,23.928],[38.238,23.951],[38.198,23.967],[38.166,23.994],[38.126,24.029],[38.079,24.071],[38.022,24.081],[37.968,24.117],[37.943,24.151],[37.982,24.166],[37.939,24.161],[37.946,24.206],[37.925,24.164],[37.867,24.151],[37.82,24.181],[37.766,24.222],[37.73,24.257],[37.694,24.279],[37.651,24.291],[37.629,24.249],[37.586,24.247],[37.547,24.274],[37.5,24.289],[37.464,24.34],[37.428,24.367],[37.428,24.421],[37.32,24.625],[37.259,24.703],[37.23,24.738],[37.23,24.782],[37.179,24.799],[37.147,24.851],[37.197,24.848],[37.244,24.855],[37.259,24.922],[37.28,24.964],[37.259,25.029],[37.259,25.111],[37.251,25.155],[37.23,25.194],[37.201,25.225],[37.172,25.258],[37.122,25.299],[37.093,25.344],[37.086,25.385],[37.061,25.42],[37.017,25.495],[36.996,25.55],[36.971,25.589],[36.945,25.635],[36.895,25.665],[36.841,25.729],[36.794,25.76],[36.747,25.745],[36.701,25.78],[36.693,25.822],[36.665,25.856],[36.672,25.902],[36.704,25.944],[36.704,26.0],[36.672,26.045],[36.607,26.069],[36.535,26.082],[36.449,26.246],[36.427,26.282],[36.384,26.334],[36.308,26.498],[36.229,26.626],[36.182,26.68],[36.125,26.727],[36.081,26.797],[36.053,26.844],[36.031,26.906],[35.977,26.949],[35.912,26.999],[35.833,27.092],[35.804,27.143],[35.811,27.183],[35.783,27.236],[35.7,27.325],[35.653,27.354],[35.617,27.389],[35.588,27.428],[35.52,27.519],[35.505,27.565],[35.502,27.619],[35.459,27.663],[35.415,27.751],[35.387,27.783],[35.351,27.801],[35.333,27.862],[35.271,27.928],[35.246,27.962],[35.181,28.002],[35.217,28.038],[35.181,28.061],[35.138,28.078],[35.099,28.09],[35.052,28.119],[35.009,28.11],[34.944,28.095],[34.901,28.082],[34.847,28.071],[34.857,28.11],[34.814,28.088],[34.775,28.095],[34.735,28.105],[34.71,28.141],[34.674,28.112],[34.667,28.071],[34.634,28.033],[34.605,28.071],[34.58,28.105],[34.605,28.142],[34.627,28.176],[34.656,28.207],[34.674,28.271],[34.713,28.328],[34.742,28.411],[34.767,28.467],[34.803,28.527],[34.796,28.573],[34.793,28.62],[34.778,28.664],[34.796,28.727],[34.825,28.784],[34.839,28.828],[34.843,28.877],[34.839,28.923],[34.857,28.963],[34.865,29.007],[34.854,29.046],[34.872,29.085],[34.893,29.174],[34.908,29.216],[34.944,29.25],[34.933,29.289],[34.944,29.336],[35.059,29.335],[35.178,29.316],[35.336,29.292],[35.473,29.272],[35.621,29.25],[35.739,29.232],[35.797,29.223],[35.912,29.206],[36.017,29.189],[36.071,29.199],[36.179,29.279],[36.283,29.355],[36.402,29.439],[36.477,29.495],[36.542,29.589],[36.603,29.681],[36.65,29.75],[36.704,29.831],[36.755,29.865],[36.845,29.882],[36.931,29.897],[37.075,29.924],[37.219,29.949],[37.352,29.973],[37.471,29.995],[37.536,30.105],[37.568,30.175],[37.604,30.251],[37.633,30.312],[37.669,30.348],[37.781,30.4],[37.899,30.459],[37.975,30.495],[37.932,30.55],[37.82,30.66],[37.712,30.772],[37.601,30.883],[37.493,30.994],[37.349,31.128],[37.223,31.248],[37.089,31.369],[36.96,31.491],[36.999,31.501],[37.208,31.555],[37.457,31.617],[37.701,31.682],[37.763,31.697],[37.95,31.744],[38.177,31.8],[38.4,31.856],[38.627,31.911],[38.85,31.967],[38.965,31.994],[39.116,32.102],[39.156,32.121],[39.354,32.092],[39.552,32.063],[39.75,32.035],[39.948,32.006],[40.031,31.994],[40.369,31.938],[40.423,31.92],[40.481,31.893],[40.581,31.84],[40.671,31.796],[40.758,31.751],[40.844,31.707],[40.934,31.661],[41.021,31.617],[41.111,31.572],[41.197,31.528],[41.283,31.482],[41.373,31.438],[41.46,31.393],[41.546,31.349],[41.636,31.303],[41.723,31.259],[41.809,31.214],[41.899,31.17],[41.985,31.126],[42.075,31.081],[42.14,31.03],[42.227,30.967],[42.309,30.905],[42.396,30.842],[42.479,30.778],[42.576,30.707],[42.669,30.636],[42.763,30.565],[42.86,30.495],[42.965,30.42],[43.055,30.358],[43.141,30.295],[43.227,30.233],[43.317,30.172],[43.433,30.091],[43.548,30.01],[43.659,29.929],[43.775,29.848],[43.825,29.814],[43.89,29.767],[44.005,29.687],[44.12,29.606],[44.235,29.525],[44.329,29.458],[44.423,29.39],[44.52,29.323],[44.613,29.257],[44.693,29.201],[44.808,29.186],[44.887,29.179],[44.97,29.172],[45.049,29.167],[45.128,29.161],[45.229,29.152],[45.333,29.144],[45.434,29.137],[45.539,29.129],[45.639,29.12],[45.744,29.112],[45.845,29.103],[45.949,29.096],[46.025,29.09],[46.1,29.083],[46.176,29.078],[46.251,29.071],[46.356,29.063],[46.403,29.071],[46.446,29.08],[46.489,29.088],[46.532,29.096],[46.644,29.083],[46.755,29.071],[46.867,29.059],[46.979,29.047],[47.079,29.036],[47.177,29.024],[47.277,29.012],[47.378,29.002],[47.432,28.995],[47.493,28.904],[47.551,28.771],[47.558,28.691],[47.58,28.632],[47.619,28.592],[47.659,28.559],[47.72,28.534],[47.9,28.536],[48.077,28.538],[48.257,28.539],[48.433,28.541],[48.469,28.51],[48.509,28.45],[48.498,28.394],[48.519,28.353],[48.534,28.299],[48.617,28.217],[48.602,28.168],[48.606,28.127],[48.649,28.071],[48.703,28.024],[48.746,28.024],[48.789,28.009],[48.746,27.982],[48.771,27.93],[48.815,27.906],[48.836,27.872],[48.879,27.837],[48.872,27.795],[48.865,27.754],[48.854,27.795],[48.822,27.768],[48.825,27.811],[48.786,27.744],[48.811,27.698],[48.847,27.668],[48.869,27.619],[48.897,27.572],[48.915,27.609],[48.969,27.621],[49.016,27.585],[49.056,27.568],[49.106,27.546],[49.153,27.546],[49.207,27.551],[49.254,27.533],[49.286,27.497],[49.311,27.457],[49.265,27.453],[49.207,27.459],[49.157,27.459],[49.175,27.416],[49.214,27.396],[49.247,27.423],[49.229,27.379],[49.225,27.332],[49.268,27.356],[49.311,27.345],[49.315,27.286],[49.319,27.224],[49.344,27.183],[49.369,27.219],[49.412,27.204],[49.398,27.163],[49.441,27.161],[49.481,27.144],[49.524,27.133],[49.488,27.175],[49.527,27.183],[49.571,27.193],[49.56,27.155],[49.571,27.104],[49.614,27.072],[49.671,26.991],[49.7,26.959],[49.736,26.94],[49.772,26.913],[49.833,26.888],[49.873,26.862],[49.916,26.861],[49.974,26.842],[50.053,26.756],[50.143,26.682],[50.161,26.64],[50.118,26.675],[50.039,26.695],[50.006,26.748],[49.985,26.709],[49.992,26.663],[50.003,26.587],[50.032,26.494],[50.078,26.454],[50.161,26.427],[50.208,26.369],[50.215,26.324],[50.215,26.216],[50.201,26.172],[50.154,26.167],[50.158,26.103],[50.143,26.037],[50.122,26.077],[50.096,26.118],[50.071,26.16],[50.046,26.194],[49.995,26.152],[49.999,26.108],[49.988,26.06],[49.995,26.016],[50.035,26.033],[50.068,26.0],[50.111,25.976],[50.129,25.934],[50.118,25.868],[50.143,25.816],[50.222,25.718],[50.248,25.679],[50.258,25.631],[50.233,25.679],[50.186,25.704],[50.143,25.733],[50.176,25.684],[50.233,25.615],[50.348,25.483],[50.381,25.513],[50.402,25.478],[50.464,25.447],[50.492,25.392],[50.51,25.344],[50.525,25.292],[50.518,25.245],[50.536,25.199],[50.55,25.159],[50.546,25.118],[50.554,25.078],[50.608,25.042],[50.644,24.995],[50.683,24.914],[50.726,24.882],[50.737,24.782],[50.762,24.737],[50.809,24.747]];   // Natural Earth (public domain), simplified
+function geoOf(addr, link) {
+  const m = String(link || '').match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const d = String(addr || '').match(/حي\s*[:\-]?\s*([^\-,،\n0-9]+)/);
+  return { lat: m ? +m[1] : null, lng: m ? +m[2] : null, district: d ? norm(d[1]).replace(/^(ال)?حي\s+/, '').slice(0, 30) : '' };
+}
+const geoCentroid = pts => {
+  if (!pts.length) return null;
+  const med = a => { const v = a.slice().sort((x, y) => x - y); return v[Math.floor(v.length / 2)]; };
+  const la = med(pts.map(p => p[0])), ln = med(pts.map(p => p[1]));
+  const near = pts.filter(p => Math.abs(p[0] - la) < 0.05 && Math.abs(p[1] - ln) < 0.05);
+  const use = near.length ? near : pts;
+  return [+(use.reduce((a, p) => a + p[0], 0) / use.length).toFixed(2), +(use.reduce((a, p) => a + p[1], 0) / use.length).toFixed(2)];
+};
+function buildGeo(files, riy) {
+  const cities = {}, dists = {};
+  const bump = (map, key, cid, fee, pt, ok) => { const E = map[key] = map[key] || { name: key, n: {}, f: {}, pts: [] }; E.n[cid] = (E.n[cid] || 0) + 1; E.f[cid] = (E.f[cid] || 0) + fee; if (pt && ok(pt)) E.pts.push(pt); };
+  for (const f of files) for (const o of f.rows) {
+    if (o.cancelled || o.pickup || o.lat === undefined) continue;
+    const byCol = matchCenter(o.store), cid = byCol && !CMAP[byCol].shared ? byCol : f.center;
+    if (!cid) continue;
+    const en = String(o.city || '').trim(), city = CITY_AR[en] || en || 'غير محدد';
+    const pt = o.lat != null ? [o.lat, o.lng] : null;
+    bump(cities, city, cid, o.fee, pt, p => p[0] > 16 && p[0] < 33 && p[1] > 34 && p[1] < 56);
+    if (riy.some(k => norm(o.city).includes(k)) && o.district) bump(dists, o.district, cid, o.fee, pt, p => p[0] > 24.3 && p[0] < 25.2 && p[1] > 46.3 && p[1] < 47.2);
+  }
+  const done = m => Object.values(m).map(e => ({ name: e.name, n: e.n, f: e.f, at: geoCentroid(e.pts) }));
+  const out = { cities: done(cities), districts: done(dists) };
+  return out.cities.length ? out : null;
+}
+
 /* ---------- computation ---------- */
 function compute() {
   const set = store.settings;
@@ -868,6 +919,7 @@ function compute() {
     if (riy.some(k => norm(o.city).includes(k))) { x.ordIn++; x.delIn += o.fee; } else { x.ordOut++; x.delOut += o.fee; }
   }
   for (const ce of CENTERS) { const x = c[ce.id]; x.ordAll = x.ordIn + x.ordOut + x.ordPick; }
+  const geo = buildGeo(orderFiles, riy) || S.geoAgg || null;   // published months carry the area totals only
   const hasOrders = orderFiles.some(f => f.rows.length);
   // Fuel and packaging are borne only by the online stores (never the exhibit or wholesale).
   const DC = CENTERS.filter(ce => ce.delivery);
@@ -1014,7 +1066,7 @@ function compute() {
       CENTERS.forEach(ce => finalize(c[ce.id]));
     }
   }
-  R = { c, ws, cats, catCost, svcs, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, geo, ws, cats, catCost, svcs, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -1239,6 +1291,7 @@ function renderResults() {
 
 function renderDelivery() {
   const r = R;
+  renderGeo($('#geoAll'), geoState.all.store, 'all', true);
   const stores = CENTERS.filter(ce => r.c[ce.id].ordAll > 0);
   if (!r.hasOrders) { $('#delTable').innerHTML = '<div class="empty">ارفع تقرير طلبات المتاجر من تبويب المدخلات</div>'; return; }
   let t = `<table><thead><tr><th>المتجر</th><th class="n">طلبات الرياض</th><th class="n">طلبات خارج الرياض</th><th class="n">استلام من الفرع</th><th class="n">إيراد توصيل الرياض</th><th class="n">إيراد توصيل خارج الرياض</th><th class="n">نسبة تحمل المحروقات</th><th class="n">المحروقات المحمّلة</th><th class="n">نسبة تحمل التغليف</th><th class="n">التغليف المحمّل</th></tr></thead><tbody>`;
@@ -1295,6 +1348,8 @@ function renderStatement() {
   $('#cDel').innerHTML = `<table><tbody>${dl.map(([a, b, c]) => `<tr><td>${a}</td><td class="n num">${b}</td><td class="n num">${c}</td></tr>`).join('')}</tbody></table>`;
 
   renderBreakeven(ce, x);
+  $('#geoStore').hidden = !ce.delivery;
+  if (ce.delivery) renderGeo($('#geoStore'), ce.id, 'store', false);
 
   // services (grooming, play area, delivery …) from the combined sales report
   const SV = R.svcs[stCenter];
@@ -1452,6 +1507,65 @@ function renderBreakeven(ce, x) {
   });
   $('#beCurrent').onclick = () => { delete beMix[ce.id]; renderBreakeven(ce, x); };
   $('#beSuggest').onclick = () => { beMix[ce.id] = suggested; renderBreakeven(ce, x); };
+}
+
+/* ---------- order maps ---------- */
+const GEO_STORES = { all: { name: 'كل المتاجر', color: '--accent' }, cpstore: { name: 'كيوت بيتس', color: '--s2' }, hamtaro: { name: 'هامتارو', color: '--s3' }, wagy: { name: 'واجي', color: '--s4' } };
+const geoState = { all: { store: 'all', metric: 'n' }, store: { metric: 'n' } };
+function geoRegion(c) {
+  if (/الكويت|البحرين|المنامة|المحرق|الرفاع/.test(c.name)) return 'خارج المملكة';
+  if (c.name === 'الرياض') return 'الرياض';
+  if (!c.at) return 'غير محدد';
+  const [lat, lng] = c.at;
+  return lng >= 48.5 ? 'الشرقية' : lat < 20.5 ? 'الجنوبية' : lat > 27.3 ? 'الشمالية' : lng < 42.5 ? 'الغربية' : 'الوسطى (خارج الرياض)';
+}
+function geoZone(d) {
+  if (!d.at) return 'غير محدد';
+  const C = [24.7136, 46.6753], dy = (d.at[0] - C[0]) * 111, dx = (d.at[1] - C[1]) * 111 * Math.cos(C[0] * Math.PI / 180);
+  if (Math.hypot(dx, dy) < 6) return 'وسط';
+  const a = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  return a < 45 || a >= 315 ? 'شمال' : a < 135 ? 'شرق' : a < 225 ? 'جنوب' : 'غرب';
+}
+function renderGeo(el, store, stateKey, withChips) {
+  const G = R.geo, st = geoState[stateKey];
+  if (!G) { el.innerHTML = '<div class="card-head"><h2>خريطة الطلبات</h2></div><div class="empty">ارفع ملفات طلبات سلة لعرض الخريطة</div>'; return; }
+  const val = (it, m) => { const o = it[m] || {}; return store === 'all' ? Object.values(o).reduce((a, b) => a + b, 0) : (o[store] || 0); };
+  const count = it => val(it, st.metric);
+  const color = `var(${GEO_STORES[store].color})`, unit = st.metric === 'n' ? 'طلب' : 'ريال';
+  const fmtV = v => fmt(Math.round(v));
+  const total = G.cities.reduce((a, c) => a + val(c, 'n'), 0), ry = G.cities.filter(c => c.name === 'الرياض').reduce((a, c) => a + val(c, 'n'), 0);
+  const chips = withChips ? Object.entries(GEO_STORES).map(([k, v]) => `<button class="chip" data-gs="${k}" aria-pressed="${k === store}"><i class="dot" style="background:var(${v.color})"></i>${v.name}</button>`).join('') : '';
+  const metricChips = [['n', 'عدد الطلبات'], ['f', 'إيراد التوصيل']].map(([k, l]) => `<button class="chip" data-gm="${k}" aria-pressed="${k === st.metric}">${l}</button>`).join('');
+  const project = (box, W) => { const k = Math.cos((box.s + box.n) / 2 * Math.PI / 180), sx = W / ((box.e - box.w) * k); return { H: Math.round((box.n - box.s) * sx), p: ([lat, lng]) => [(lng - box.w) * k * sx, (box.n - lat) * sx] }; };
+  const map = (items, box, o) => {
+    const W = 640, P = project(box, W);
+    const vis = items.filter(it => it.at && count(it) > 0 && it.at[0] >= box.s && it.at[0] <= box.n && it.at[1] >= box.w && it.at[1] <= box.e).sort((a, b) => count(b) - count(a));
+    const max = Math.max(1, ...vis.map(count)), r = v => 3 + Math.sqrt(v / max) * o.rMax;
+    let s = `<svg class="map" viewBox="0 0 ${W} ${P.H}" role="img" aria-label="${o.label}">`;
+    if (o.outline) s += `<path d="M${o.outline.map(([lng, lat]) => P.p([lat, lng]).map(v => v.toFixed(1)).join(',')).join('L')}Z" fill="var(--surface-2)" stroke="var(--axis)"/>`;
+    if (o.heat) { s += `<defs><filter id="gb-${o.heat}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="16"/></filter></defs><g filter="url(#gb-${o.heat})" opacity=".55">`; for (const it of vis) { const [x, y] = P.p(it.at); s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(10 + Math.sqrt(count(it) / max) * 34).toFixed(1)}" fill="${color}" fill-opacity="${(0.15 + 0.6 * count(it) / max).toFixed(2)}"/>`; } s += '</g>'; }
+    if (o.centre) { const [x, y] = P.p(o.centre); s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="none" stroke="var(--muted)"/><text x="${x.toFixed(1)}" y="${(y + 16).toFixed(1)}" text-anchor="middle" style="fill:var(--muted)">وسط الرياض</text>`; }
+    vis.slice().reverse().forEach(it => { const [x, y] = P.p(it.at); s += `<circle class="bubble" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r(count(it)).toFixed(1)}" fill="${color}" stroke="${color}" data-tip="${esc(it.name)}"/>`; });
+    vis.slice(0, o.labels).forEach(it => { const [x, y] = P.p(it.at); s += `<text x="${x.toFixed(1)}" y="${(y - r(count(it)) - 3).toFixed(1)}" text-anchor="middle">${esc(it.name)} ${fmtV(count(it))}</text>`; });
+    return s + `</svg><div class="legend"><span>أكبر دائرة = <b class="num">${fmtV(max)}</b> ${unit}</span></div>`;
+  };
+  const zones = (items, fn, order) => { const by = {}; items.forEach(it => { const z = fn(it); by[z] = (by[z] || 0) + count(it); }); const t = Object.values(by).reduce((a, b) => a + b, 0) || 1;
+    return `<div class="zones">${order.filter(z => by[z]).map(z => `<div class="zone">${z}<b>${fmtV(by[z])}</b>${(by[z] / t * 100).toFixed(0)}%<div class="zbar" style="width:${Math.max(4, by[z] / t * 100)}%;background:${color}"></div></div>`).join('')}</div>`; };
+  const rank = (items, head) => { const vis = items.filter(it => count(it) > 0).sort((a, b) => count(b) - count(a)), t = vis.reduce((a, it) => a + count(it), 0) || 1, mx = vis.length ? count(vis[0]) : 1;
+    return `<div class="geo-rank"><table><thead><tr><th>${head}</th><th class="n">${st.metric === 'n' ? 'الطلبات' : 'إيراد التوصيل'}</th><th class="n">النسبة</th><th></th></tr></thead><tbody>${vis.map(it => `<tr><td>${esc(it.name)}</td><td class="n">${fmtV(count(it))}</td><td class="n num">${(count(it) / t * 100).toFixed(1)}%</td><td><span class="bar" style="width:${Math.max(2, count(it) / mx * 70)}px;background:${color}"></span></td></tr>`).join('')}</tbody></table></div>`; };
+  // Riyadh box: districts within ~30 km of the median position
+  const ds = G.districts.filter(d => d.at), med = a => { const v = a.slice().sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : 0; };
+  const mLat = med(ds.map(d => d.at[0])), mLng = med(ds.map(d => d.at[1])), near = ds.filter(d => Math.abs(d.at[0] - mLat) < 0.3 && Math.abs(d.at[1] - mLng) < 0.3);
+  const ryBox = near.length ? { s: Math.min(...near.map(d => d.at[0])) - 0.02, n: Math.max(...near.map(d => d.at[0])) + 0.02, w: Math.min(...near.map(d => d.at[1])) - 0.02, e: Math.max(...near.map(d => d.at[1])) + 0.02 } : null;
+  el.innerHTML = `<div class="card-head"><h2>خريطة الطلبات</h2><p>من طلبات سلة · أعداد مجمعة لكل مدينة وحي، بدون مواقع العملاء</p></div>
+    <div class="controls" style="justify-content:space-between"><div class="chips">${chips}</div><div class="chips">${metricChips}</div></div>
+    <p class="note" style="margin:10px 0 0">الطلبات <b class="num">${fmt(total)}</b> · داخل الرياض <b class="num">${fmt(ry)}</b> (${total ? (ry / total * 100).toFixed(0) : 0}%) · إيراد التوصيل <b class="num">${fmtV(G.cities.reduce((a, c) => a + val(c, 'f'), 0))}</b></p>
+    <div class="geo-sec"><h3>المملكة حسب المدينة</h3><div class="geo-grid"><div>${map(G.cities, { w: 34.4, e: 55.8, s: 16.2, n: 32.3 }, { outline: KSA_OUTLINE, rMax: 26, labels: 6, label: 'الطلبات حسب المدينة' })}</div><div>${zones(G.cities, geoRegion, ['الرياض', 'الوسطى (خارج الرياض)', 'الغربية', 'الشرقية', 'الجنوبية', 'الشمالية', 'خارج المملكة', 'غير محدد'])}${rank(G.cities, 'المدينة')}</div></div></div>
+    <div class="geo-sec"><h3>الرياض حسب الحي</h3><div class="geo-grid"><div>${ryBox ? map(G.districts, ryBox, { rMax: 18, labels: 10, heat: stateKey, centre: [24.7136, 46.6753], label: 'الطلبات حسب حي الرياض' }) : '<div class="empty">لا توجد مواقع لأحياء الرياض</div>'}</div><div>${zones(G.districts, geoZone, ['شمال', 'شرق', 'وسط', 'غرب', 'جنوب', 'غير محدد'])}${rank(G.districts, 'الحي')}</div></div></div>`;
+  const all = [...G.cities, ...G.districts];
+  bindTips(el, name => { const it = all.find(x => x.name === name); return `<b>${esc(name)}</b>` + Object.entries(GEO_STORES).slice(1).map(([k, v]) => tipRow(`<i class="dot" style="background:var(${v.color});display:inline-block"></i> ${v.name}`, `${fmt(it.n[k] || 0)} طلب · ${fmtV((it.f || {})[k] || 0)} ريال`)).join(''); });
+  el.querySelectorAll('[data-gs]').forEach(b => b.onclick = () => { st.store = b.dataset.gs; renderGeo(el, st.store, stateKey, withChips); });
+  el.querySelectorAll('[data-gm]').forEach(b => b.onclick = () => { st.metric = b.dataset.gm; renderGeo(el, store, stateKey, withChips); });
 }
 
 const sumObj = (M, k) => Object.values(M).reduce((a, v) => a + (v[k] || 0), 0);
