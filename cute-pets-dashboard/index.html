@@ -215,6 +215,10 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="card-head"><h2>قائمة الدخل حسب مراكز البيع</h2><p id="plNote"></p></div>
         <div class="table-wrap" id="plTable"></div>
       </div>
+      <div class="card" id="payoutCard" hidden>
+        <div class="card-head"><h2>العمولات المستحقة عن الشهر</h2><p>تُصرف في الشهر التالي</p></div>
+        <div class="table-wrap" id="payoutTable"></div>
+      </div>
       <div class="card geo-card" id="geoAll"></div>
       <div class="card">
         <div class="card-head"><h2>التوصيل ونسب التحمل</h2><p>المحروقات بعدد طلبات داخل الرياض، والتغليف بعدد كل الطلبات، على المتاجر الإلكترونية فقط (المعرض لا يتحمل)</p></div>
@@ -373,6 +377,11 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
       </div>
 
       <div class="card">
+        <div class="card-head"><h2>مدخلات الشهر من الفواتير والتقارير</h2><p>المحروقات الفعلية (فاتورة PetroApp قبل الضريبة)، فواتير منصة طيار، والطلبات المسلَّمة لكل سواق من «تقرير مستحقات الطيارين» لكل متجر. تحل محل نفس البنود في قائمة الدخل</p></div>
+        <div class="table-wrap" id="manualInputs"></div>
+      </div>
+
+      <div class="card">
         <div class="card-head"><h2>تصنيف حسابات قائمة الدخل</h2><p>صُنِّفت تلقائيًا حسب اسم الحساب، غيّر التصنيف إن لزم</p></div>
         <div class="table-wrap" id="clsTable"></div>
       </div>
@@ -493,7 +502,7 @@ const histSrc = () => LOCK ? LOCK.hist : store.history;
 // sales): a seeded month is kept there as a marker only, unless the viewer changed its inputs.
 const seedPrint = new WeakMap();
 const dataPrint = d => [d.is?.fileName, d.is?.rows?.length, (d.orders?.files || []).map(f => `${f.fileName}:${f.center}:${f.rows.length}`).join(),
-  (d.sales || []).map(f => `${f.fileName}:${f.center}:${f.rows.length}`).join(), d.payroll?.rows?.length, JSON.stringify(d.cls || {})].join('|');
+  (d.sales || []).map(f => `${f.fileName}:${f.center}:${f.rows.length}`).join(), d.payroll?.rows?.length, JSON.stringify(d.cls || {}), JSON.stringify(d.manual || {})].join('|');
 function expandSeed(d) {
   const data = expandSeedData(d);
   seedPrint.set(data, dataPrint(data));
@@ -860,12 +869,17 @@ function fixedMatch(account, center) {
 }
 
 /* ---------- commissions (paid the month after; booked here in the month earned) ---------- */
+const STORE_MANAGERS = { hamtaro: 'محمد عاطف' };
 const COMMISSIONS = { managerPct: 5, importPct: 2, fishPct: 0.65, perRiyadhOrder: 0.5 };
 // Tayar (delivery management platform): each store's monthly invoice, and the drivers' delivered orders per store from
 // its drivers report (one driver works for all three stores). A store without a report falls back to its Riyadh orders in Salla.
 // Actual fuel for the month from the PetroApp invoice (before VAT, which is recovered); it replaces Edara's fuel lines.
 // Vehicle maintenance stays as booked in Edara.
 const FUEL_ACTUAL = { '2026-09': 2054.94 };
+const manualOf = () => S.manual || {};
+const fuelActual = () => manualOf().fuel ?? FUEL_ACTUAL[curMonthKey()];
+const tayarInvoices = () => manualOf().tayar || TAYAR_INVOICES[curMonthKey()];
+const driverOrders = () => manualOf().drivers || DRIVER_ORDERS[curMonthKey()];
 const TAYAR_INVOICES = { '2026-09': { cpstore: 113, hamtaro: 210, wagy: 58 } };
 const DRIVER_ORDERS = { '2026-09': { cpstore: { 'ميزان': 142, 'دادو': 96 }, hamtaro: { 'ميزان': 254, 'دادو': 205 }, wagy: { 'ميزان': 69, 'دادو': 47 } } };
 
@@ -956,7 +970,7 @@ function compute() {
     const a = r.amount * flip, x = c[mainDirect(r)];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
     if (r.center === 'main' && norm(r.account).includes('حكومي')) continue;   // government fees on the shared center are not a real profit or loss
-    if (TAYAR_INVOICES[curMonthKey()] && /طيار/.test(norm(r.account))) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: 'فاتورة طيار' }); continue; }
+    if (tayarInvoices() && /طيار/.test(norm(r.account))) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: 'فاتورة طيار' }); continue; }
     // «عمولة مبيعات» in Edara is the commission paid for the month before: not this month's expense
     // (the month's own commissions are computed below, see COMMISSIONS)
     if (/عموله مبيعات/.test(norm(r.account))) continue;
@@ -1036,7 +1050,7 @@ function compute() {
   const fuelIS = CENTERS.reduce((s, ce) => s + c[ce.id].fuelOwn, 0);
   const vehTotal = CENTERS.reduce((s, ce) => s + c[ce.id].vehOwn, 0);   // vehicle maintenance follows fuel
   const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0);
-  const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : FUEL_ACTUAL[curMonthKey()] ?? fuelIS;
+  const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : fuelActual() ?? fuelIS;
   const packTotal = set.packManual !== '' && set.packManual != null ? +set.packManual : packIS;
   for (const ce of CENTERS) {
     const x = c[ce.id];
@@ -1198,7 +1212,7 @@ function compute() {
     const add = (cid, label, v) => { if (v > 0) { c[cid].expenses += v; c[cid].lines.push({ account: label, cat: 'expense', amount: v }); } };
     add('exhibit', `عمولة منتجات الاستيراد في المحل (${C.importPct}% من مبيعات البراندات)`, c.exhibit.revBrand * C.importPct / 100);
     add('exhibit', `عمولة قسم الأسماك (${C.fishPct}% من مبيعات الأسماك)`, catSum('exhibit', /اسماك|سمك/) * C.fishPct / 100);
-    const mo = curMonthKey(), DR = DRIVER_ORDERS[mo] || {}, TY = TAYAR_INVOICES[mo] || {};
+    const DR = driverOrders() || {}, TY = tayarInvoices() || {};
     for (const ce of CENTERS.filter(ce => ce.delivery)) {
       const rep = DR[ce.id], n = rep ? Object.values(rep).reduce((a, v) => a + v, 0) : c[ce.id].ordIn;
       add(ce.id, `عمولة التوصيل للسواقين (${C.perRiyadhOrder} ريال × ${fmt(n)} طلب${rep ? ' من تقرير الطيارين' : ' داخل الرياض من سلة'})`, n * C.perRiyadhOrder);
@@ -1523,6 +1537,19 @@ function renderResults() {
   if (r.mainAllocated) notes.push(`مركز التكلفة المشترك (الرئيسي) موزع بالكامل: ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}، والمحروقات وصيانة السيارات والتغليف على المتاجر بالطلبات، والمصروفات الحكومية وتسوية المخزون متجاهلة، ومبيعات تطبيقات التوصيل وتكلفتها على حدة (غير معروضة حالياً)، و«عمولة مبيعات» في إدارة (تخص الشهر السابق) مستبعدة وتُحسب عمولات الشهر نفسه`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
   $('#plNote').textContent = notes.join(' · ');
+  renderPayout();
+}
+// what is owed for the month's commissions, by beneficiary
+function renderPayout() {
+  const r = R, rows = [];
+  if (!r.hasIS || r.archive) { $('#payoutCard').hidden = true; return; }
+  const DR = driverOrders() || {}, per = COMMISSIONS.perRiyadhOrder, drivers = {};
+  for (const [cid, by] of Object.entries(DR)) for (const [name, n] of Object.entries(by)) { const d = drivers[name] = drivers[name] || { n: 0, by: {} }; d.n += n; d.by[cid] = n; }
+  for (const [name, d] of Object.entries(drivers)) rows.push([name, 'عمولة التوصيل', `${fmt(d.n)} طلب × ${per}`, d.n * per]);
+  for (const ce of CENTERS.filter(ce => ce.delivery)) if (r.c[ce.id].mgrComm) rows.push([STORE_MANAGERS[ce.id] || `مدير ${ce.name}`, 'عمولة مدير المتجر', `${COMMISSIONS.managerPct}% × ${money(r.c[ce.id].netBeforeMgr)}`, r.c[ce.id].mgrComm]);
+  for (const l of r.c.exhibit.lines.filter(l => /عموله منتجات الاستيراد|عموله قسم الاسماك/.test(norm(l.account)))) rows.push(['المحل', itemLabel(l.account), '', l.amount]);
+  $('#payoutCard').hidden = !rows.length;
+  $('#payoutTable').innerHTML = `<table><thead><tr><th>المستحق</th><th>العمولة</th><th>الأساس</th><th class="n">المبلغ</th></tr></thead><tbody>${rows.map(([a, b, c, v]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td class="num">${esc(c)}</td><td class="n num">${fmt(v, 2)}</td></tr>`).join('')}<tr class="sum"><td>الإجمالي</td><td></td><td></td><td class="n num">${fmt(rows.reduce((a, x) => a + x[3], 0), 2)}</td></tr></tbody></table>`;
 }
 
 function renderDelivery() {
@@ -1911,7 +1938,35 @@ function renderWholesale() {
   if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th><th class="n">تكلفة الاستيراد</th><th class="n">تكلفة الجملة (تقديري)</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td><td class="n">${money(u.imp || 0)}</td><td class="n">${money(u.wh || 0)} <span class="badge">×${fmt(u.ratio || 1, 2)}</span></td></tr>`).join('')}</tbody></table>`;
 }
 
+function renderManualInputs() {
+  const el = $('#manualInputs'); if (!el) return;
+  if (S.archive && !S.is) { el.innerHTML = '<div class="empty">شهر مقفل مستورد من ملف النتائج: لا مدخلات</div>'; return; }
+  const DS = CENTERS.filter(ce => ce.delivery), TY = tayarInvoices() || {}, DR = driverOrders() || {}, fuel = fuelActual();
+  const names = [...new Set([...Object.values(DR).flatMap(o => Object.keys(o)), ...(S.manual?.driverNames || [])])];
+  if (!names.length) names.push('');
+  const inp = (attrs, v, w = 100) => `<input type="number" step="0.01" min="0" ${attrs} value="${v ?? ''}" style="width:${w}px">`;
+  el.innerHTML = `<table><tbody>
+    <tr><td>المحروقات الفعلية للشهر</td><td colspan="${DS.length}">${inp('data-mi="fuel" aria-label="المحروقات الفعلية"', fuel, 140)} <span class="note">فارغ = من قائمة الدخل</span></td></tr>
+    <tr class="sub"><td>فاتورة طيار</td>${DS.map(ce => `<td class="n">${ce.short}<br>${inp(`data-mi="tayar" data-c="${ce.id}" aria-label="طيار ${ce.short}"`, TY[ce.id])}</td>`).join('')}</tr>
+    <tr class="sub"><td>طلبات السواقين المسلَّمة</td>${DS.map(ce => `<td class="n">${ce.short}</td>`).join('')}</tr>
+    ${names.map((n, i) => `<tr><td><input type="text" data-mi="dname" data-i="${i}" value="${esc(n)}" placeholder="اسم السواق" style="width:140px" aria-label="اسم السواق"></td>${DS.map(ce => `<td class="n">${inp(`data-mi="dord" data-i="${i}" data-c="${ce.id}" aria-label="طلبات ${esc(n)} ${ce.short}"`, DR[ce.id]?.[n], 80)}</td>`).join('')}</tr>`).join('')}
+    </tbody></table><div class="controls" style="margin-top:8px"><button class="btn small" id="miAddDriver">إضافة سواق</button></div>`;
+  const read = () => {
+    const m = { ...(S.manual || {}) };
+    const f = el.querySelector('[data-mi="fuel"]').value; if (f === '') delete m.fuel; else m.fuel = +f;
+    const ty = {}; el.querySelectorAll('[data-mi="tayar"]').forEach(i => { if (i.value !== '') ty[i.dataset.c] = +i.value; });
+    if (Object.keys(ty).length) m.tayar = ty; else delete m.tayar;
+    const nm = [...el.querySelectorAll('[data-mi="dname"]')].map(i => i.value.trim()), dr = {};
+    el.querySelectorAll('[data-mi="dord"]').forEach(i => { const n = nm[+i.dataset.i]; if (n && i.value !== '') (dr[i.dataset.c] = dr[i.dataset.c] || {})[n] = +i.value; });
+    m.driverNames = nm.filter(Boolean);
+    if (Object.keys(dr).length) m.drivers = dr; else delete m.drivers;
+    S.manual = m; refresh();
+  };
+  el.querySelectorAll('input').forEach(i => i.onchange = read);
+  $('#miAddDriver').onclick = () => { S.manual = { ...(S.manual || {}), driverNames: [...names.filter(Boolean), 'سواق جديد'] }; renderManualInputs(); };
+}
 function renderInputs() {
+  renderManualInputs();
   const st = (id, html) => { $(`#${id} .status`).innerHTML = html; };
   st('up-is', S.is ? `<span class="badge ok">✓ ${esc(S.is.fileName)}</span> <span class="num">${fmt(S.is.rows.length)}</span> قيد` : '<span class="badge">لم يُرفع</span>');
   const OF = ordersFiles();
