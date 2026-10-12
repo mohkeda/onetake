@@ -924,7 +924,9 @@ function compute() {
     kept: { rev: 0, admin: 0, op: 0 }, mainRev: 0, mainAdmin: 0, mainOp: 0, mainShare: 0 };
   // Lines of the shared center that are NOT distributed to the stores (e.g. government fees).
   const keepWords = String(set.mainKeep || '').split(/[,،]/).map(norm).filter(Boolean);
-  const isKept = acc => keepWords.some(k => norm(acc).includes(k));
+  // Delivery-app sales booked on the shared center stay on it with their cost and commission: not distributed, not shown for now
+  const APP_SALES = /^المبيعات$|مردودات المبيعات|فروق المرتجعات|تكلفه البضاعه المباعه|عموله مبيعات/;
+  const isKept = acc => keepWords.some(k => norm(acc).includes(k)) || APP_SALES.test(norm(acc));
 
   // Income statement: keep every account line so a center's statement can be printed in the report layout.
   // Amounts keep their sign (a negative expense is a reversal). If a file books revenue as negative
@@ -1184,7 +1186,7 @@ function compute() {
 // (on the manager's salary, and the effect of the losing centers) stays on the shared center.
 function applyTax(R) {
   const rate = (+store.settings.taxRate || 0) / 100, addback = +store.settings.taxAddback || 0;
-  const companyNet = CENTERS.reduce((a, ce) => a + R.c[ce.id].net, 0);
+  const companyNet = CENTERS.filter(ce => !ce.shared).reduce((a, ce) => a + R.c[ce.id].net, 0);   // the shared center's kept delivery-app result is left aside for now
   const total = rate * Math.max(0, companyNet + addback);
   let borne = 0;
   for (const ce of CENTERS) if (!ce.shared) { const x = R.c[ce.id]; x.tax = rate * Math.max(0, x.net); borne += x.tax; }
@@ -1397,7 +1399,9 @@ function renderResults() {
   const r = R, sel = SHOWN.filter(ce => selected.has(ce.id));
   // with every center selected, the totals are the company's: they include what stays on the shared center (the company-level tax difference)
   const shared = sel.length === SHOWN.length ? CENTERS.filter(ce => ce.shared) : [];
-  const sum = k => [...sel, ...shared].reduce((s, ce) => s + (r.c[ce.id][k] || 0), 0);
+  // only the company-level tax difference is carried from the shared center; its kept delivery-app result is not shown
+  const sharedOnly = k => shared.reduce((s, ce) => s + (k === 'tax' ? r.c[ce.id].tax || 0 : k === 'netAfter' ? -(r.c[ce.id].tax || 0) : 0), 0);
+  const sum = k => sel.reduce((s, ce) => s + (r.c[ce.id][k] || 0), 0) + sharedOnly(k);
   const rev = sum('revenue'), net = sum('net'), del = sum('delivery');
   // previous saved month for deltas
   const months = Object.keys(store.history).sort();
@@ -1456,7 +1460,7 @@ function renderResults() {
   let t = `<table><thead><tr><th>البند</th>${sel.map(ce => `<th class="n"><i class="dot" style="background:var(${ce.color});display:inline-block;margin-inline-end:6px"></i>${ce.name}</th>`).join('')}<th class="n">الإجمالي</th></tr></thead><tbody>`;
   for (const [label, k, cls, sign = 1] of lines) {
     if (!k) { t += `<tr class="sec"><td colspan="${sel.length + 2}">${label}</td></tr>`; continue; }
-    const vals = sel.map(ce => (r.c[ce.id][k] || 0) * sign), extra = shared.reduce((a, ce) => a + (r.c[ce.id][k] || 0) * sign, 0);
+    const vals = sel.map(ce => (r.c[ce.id][k] || 0) * sign), extra = sharedOnly(k) * sign;
     t += `<tr class="${cls}"><td>${label}${k === 'tax' && extra ? ` <span class="badge" title="ضريبة راتب المدير العام وأثر المراكز الخاسرة">منها ${money(Math.abs(extra))} على مستوى الشركة</span>` : ''}</td>${vals.map(v => `<td class="n">${signed(v)}</td>`).join('')}<td class="n">${signed(vals.reduce((a, b) => a + b, 0) + extra)}</td></tr>`;
   }
   const revs = sel.map(ce => r.c[ce.id].revenue), nets = sel.map(ce => r.c[ce.id].net);
@@ -1469,7 +1473,7 @@ function renderResults() {
   if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يتحمل ${fmt(r.tax.rate * 100)}% من ربحه فقط، والفرق ${money(r.tax.total - r.tax.borne)} على مستوى الشركة (يظهر في الإجمالي فقط)`);
   if (r.archive) notes.push(r.salesCalc ? (Object.values(r.c).some(x => x.fromSales) ? 'المبيعات وتكلفة البضاعة لـ' + CENTERS.filter(ce => r.c[ce.id].fromSales).map(ce => ce.short).join(' و') + ' من تقرير المبيعات (الملف كان منسوخاً من الشهر السابق) · ' : '') + 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) · تكلفة بضاعة الجملة في المراكز وإيراد الجملة محسوبان من تقرير المبيعات بأسعار الجملة القديمة · الجملة لم تكن تتحمل أي مصاريف قبل سبتمبر' : 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
-  if (r.mainAllocated) notes.push(`مركز التكلفة المشترك (الرئيسي) موزع بالكامل: ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}، والمحروقات وصيانة السيارات والتغليف على المتاجر بالطلبات، والمصروفات الحكومية وتسوية المخزون متجاهلة`);
+  if (r.mainAllocated) notes.push(`مركز التكلفة المشترك (الرئيسي) موزع بالكامل: ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}، والمحروقات وصيانة السيارات والتغليف على المتاجر بالطلبات، والمصروفات الحكومية وتسوية المخزون متجاهلة، ومبيعات تطبيقات التوصيل وتكلفتها وعمولتها على حدة (غير معروضة حالياً)`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
   $('#plNote').textContent = notes.join(' · ');
 }
