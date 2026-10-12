@@ -742,6 +742,18 @@ function excludeConsumption(rows) {
   }
 }
 
+/* ---------- shared-center accounts that belong to one store ---------- */
+// "هدايا الموقع الالكتروني" is Cute Pets' website; an account naming an online store goes to that store.
+// (The exhibit is left out on purpose: its consumption account is still under review.)
+const MAIN_DIRECT = [[/الموقع الالكتروني|الموقع الإلكتروني/, 'cpstore']];
+function mainDirect(r) {
+  if (r.center !== 'main') return r.center;
+  const t = norm(r.account);
+  for (const [re, cid] of MAIN_DIRECT) if (re.test(t)) return cid;
+  const cid = matchCenter(r.account);
+  return cid && CMAP[cid].delivery ? cid : r.center;
+}
+
 /* ---------- fixed monthly expenses ---------- */
 // [name, monthly amount, Edara accounts it replaces (normalized pattern)]. Wholesale rent is its own
 // expense and stays as booked in Edara.
@@ -801,7 +813,7 @@ function compute() {
   const flip = revSum < 0 ? -1 : 1;
   for (const r of isRows) {
     const cat = S.cls[r.account] || classify(r.account, r.group);
-    const a = r.amount * flip, x = c[r.center];
+    const a = r.amount * flip, x = c[mainDirect(r)];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
     // salaries never come from Edara: they come only from the monthly payroll sheet
     if (/رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
