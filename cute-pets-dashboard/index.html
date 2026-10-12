@@ -471,12 +471,23 @@ const SEED_MONTHS = /*SEED*/null/*END*/;
 // build_center_reports.mjs; it holds that center's computed results only, never another center's data.
 const LOCK = /*LOCK*/null/*END*/;
 const histSrc = () => LOCK ? LOCK.hist : store.history;
+// Months that ship inside the page are not copied to browser storage (it is too small for a year of
+// sales): a seeded month is kept there as a marker only, unless the viewer changed its inputs.
+const seedPrint = new WeakMap();
+const dataPrint = d => [d.is?.fileName, d.is?.rows?.length, (d.orders?.files || []).map(f => `${f.fileName}:${f.center}:${f.rows.length}`).join(),
+  (d.sales || []).map(f => `${f.fileName}:${f.center}:${f.rows.length}`).join(), d.payroll?.rows?.length, JSON.stringify(d.cls || {})].join('|');
 function expandSeed(d) {
-  if (d.archive) return { ...blankMonth(), archive: d.archive };
+  const data = expandSeedData(d);
+  seedPrint.set(data, dataPrint(data));
+  return data;
+}
+const expandSales = list => (list || []).map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost, category = '', store = '', service = 0, code = '']) => ({ store, code, name, brand, category, qty, sales, bookCost, service: !!service })) }));
+function expandSeedData(d) {
+  if (d.archive) return { ...blankMonth(), archive: d.archive, sales: expandSales(d.sales), cls: d.cls || {} };
   // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup, cod]
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu, cod = 0]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cod, cancelled: !!ca, pickup: !!pu })) })) },
-    sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost, category = '', store = '', service = 0]) => ({ store, code: '', name, brand, category, qty, sales, bookCost, service: !!service })) })),
+    sales: expandSales(d.sales),
     payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost, doctor], i) => ({ name: `موظف ${i + 1}`, cc, note, cost, doctor: !!doctor })) } : null,
     geoAgg: d.geo || null,   // per city / Riyadh district totals for the order maps
     oldStock: d.oldStock || null,   // products in stock before the price change (see wsPrice)
@@ -566,7 +577,9 @@ function loadStore() {
   if (!store.costs) { const m = Object.values(store.months).find(v => v.data?.costs); if (m) store.costs = m.data.costs; }
 }
 function persist() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch (e) { /* storage full or blocked: dashboard still works in-session */ }
+  const months = Object.fromEntries(Object.entries(store.months).map(([m, v]) =>
+    [m, v.seeded && v.data && seedPrint.get(v.data) === dataPrint(v.data) ? { seeded: v.seeded } : v]));
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ ...store, months })); } catch (e) { /* storage full or blocked: dashboard still works in-session */ }
 }
 
 /* ---------- file reading ---------- */
@@ -1136,6 +1149,9 @@ function applyTax(R) {
 // is taken line by line as it was approved, with no allocation rules applied on top.
 function applyArchive(R, A) {
   const has = (t, ...ws) => ws.some(w => norm(t).includes(norm(w)));
+  const withSales = !!S.sales?.length;   // the month's sales report was added: categories, costs and wholesale come from it
+  // what the sales report gives for each center, kept to compare with the approved statement
+  R.salesCalc = withSales ? Object.fromEntries(CENTERS.map(ce => { const x = R.c[ce.id]; return [ce.id, { revMain: x.revMain, revBrand: x.revBrand, cogsMain: x.cogsMain, cogsWs: x.cogsWs }]; })) : null;
   for (const ce of CENTERS) {
     const a = A[ce.id], x = R.c[ce.id];
     Object.assign(x, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: 0, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, vehAlloc: 0, packAlloc: 0,
@@ -1158,9 +1174,9 @@ function applyArchive(R, A) {
     x.revenue = x.revMain + x.revBrand + x.delivery + x.otherRev;
     x.cogs = x.cogsMain + x.cogsWs; x.gross = x.revenue - x.cogs;
     x.adminT = x.admin; x.opex = x.cogs + x.expenses; x.totalExp = x.adminT + x.opex; x.net = x.revenue - x.totalExp;
-    R.cats[ce.id] = a?.cats || {};
+    if (!withSales) R.cats[ce.id] = a?.cats || {};
   }
-  Object.assign(R, { archive: true, hasIS: true, payrollMissing: false, mainAllocated: false, mainPool: [], catCost: {}, svcs: {}, xfer: false });
+  Object.assign(R, { archive: true, hasIS: true, payrollMissing: false, mainAllocated: false, mainPool: [] }, withSales ? {} : { catCost: {}, svcs: {}, xfer: false });
 }
 function summary(r) {
   const out = {};
@@ -1570,7 +1586,7 @@ const beMix = {};   // per center: { category: share } chosen in the simulator (
 function renderBreakeven(ce, x) {
   const sales = R.cats[ce.id] || {}, cost = R.catCost[ce.id] || {};
   const names = Object.keys(sales).filter(k => sales[k] > 0);
-  $('#cBeCard').hidden = !names.length || ce.id === 'wholesale' || R.archive;
+  $('#cBeCard').hidden = !names.length || ce.id === 'wholesale' || !Object.keys(cost).length;
   if ($('#cBeCard').hidden) return;
   const S = names.reduce((a, k) => a + sales[k], 0), C = names.reduce((a, k) => a + (cost[k] || 0), 0);
   const varExp = x.fuelAlloc + x.vehAlloc + x.packAlloc + x.lines.filter(l => l.cat === 'expense' && VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
@@ -2095,7 +2111,7 @@ window.__cpSnapshot = cid => {
     c: { [cid]: R.c[cid] }, ws, cats: only(R.cats), catCost: only(R.catCost), svcs: only(R.svcs),
     geo: R.geo ? { cities: geoOnly(R.geo.cities), districts: geoOnly(R.geo.districts) } : null,
     mainPool: R.mainPool, mainAllocated: R.mainAllocated, mode: R.mode, xfer: R.xfer, hasIS: R.hasIS, hasOrders: R.hasOrders, hasSales: R.hasSales,
-    payrollMissing: R.payrollMissing, totIn: R.totIn, totAll: R.totAll, summary: summary(R)[cid], archive: !!R.archive,
+    payrollMissing: R.payrollMissing, totIn: R.totIn, totAll: R.totAll, summary: summary(R)[cid], archive: !!R.archive, salesCalc: R.salesCalc?.[cid] || null,
   }));
 };
 

@@ -13,7 +13,7 @@ const { chromium } = await import(pwPath);
 const b = await chromium.launch(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
 const p = await b.newPage();
 p.on('pageerror', e => { console.error('page error:', e.message); process.exitCode = 1; });
-await p.goto('file://' + full); await p.evaluate(() => localStorage.clear()); await p.reload(); await p.waitForTimeout(1500);
+await p.goto('file://' + full); await p.evaluate(() => localStorage.clear()); await p.reload(); await p.waitForTimeout(7000);
 var months = await p.evaluate(() => [...new Set(Object.keys(JSON.parse(localStorage.getItem('cutepets-dashboard-v4') || '{}').months || {}))].sort());
 for (const m of months) {
   await p.evaluate(m => { const el = document.querySelector('#month'); el.value = m; el.dispatchEvent(new Event('change')); }, m);
