@@ -276,6 +276,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         </div>
         <div class="card">
           <div class="card-head"><h2>تكلفة بضاعة الجملة حسب القسم</h2><p>القائمة الثابتة (سعر الحبة / الكرتون قبل الضريبة) مع مبيعات المتاجر هذا الشهر</p></div>
+          <p class="note" id="wsStockNote" hidden></p>
           <div class="table-wrap" id="wsSections"></div>
         </div>
         <div class="card" id="wsUnmatchedCard" hidden>
@@ -419,8 +420,10 @@ const WS_OLD = {
   'رون رون رطب 75 جم': { piece: 3.50 }, 'رون رون رطب كرتون 12×': { carton: 42.00 },
 };
 const wsOldPeriod = () => ($('#month')?.value || '9999') < WS_PRICES_FROM;
-function wsPrice(sec) {
-  const o = wsOldPeriod() ? WS_OLD[sec.name] || {} : {};
+// In the month the new prices start, the new stock arrived only at its end: a product that was already
+// in stock (it sold the month before) keeps the old price; a new product, or one that was out of stock, takes the new price.
+function wsPrice(sec, oldStock = false) {
+  const o = oldStock || wsOldPeriod() ? WS_OLD[sec.name] || {} : {};
   const v = sec.isCarton ? o.carton ?? sec.carton : o.piece ?? sec.piece;
   return v ?? null;   // no price for this period: priced by the brand ratio estimate
 }
@@ -476,6 +479,7 @@ function expandSeed(d) {
     sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost, category = '', store = '', service = 0]) => ({ store, code: '', name, brand, category, qty, sales, bookCost, service: !!service })) })),
     payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost, doctor], i) => ({ name: `موظف ${i + 1}`, cc, note, cost, doctor: !!doctor })) } : null,
     geoAgg: d.geo || null,   // per city / Riyadh district totals for the order maps
+    oldStock: d.oldStock || null,   // products in stock before the price change (see wsPrice)
     costs: null, cls: d.cls || {}, demo: false, k: 1 };
 }
 
@@ -988,6 +992,15 @@ function compute() {
     if (r.name) { costByName.set(norm(r.name), r.cost); if (r.brand && !r.code) brandByCode.set('n:' + norm(r.name), r.brand); }
   }
   const ws = { byBrand: {}, bySection: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0 };
+  // products sold in the month before the new prices (from that month's sales report, or kept with the seed)
+  const curMo = $('#month')?.value || '';
+  if (curMo === WS_PRICES_FROM) {
+    const [yy, mm] = curMo.split('-').map(Number), pd = new Date(yy, mm - 2, 1);
+    const prevMo = `${pd.getFullYear()}-${String(pd.getMonth() + 1).padStart(2, '0')}`;
+    const prevSales = store.months[prevMo]?.data?.sales || [];
+    const keys = S.oldStock || (prevSales.length ? prevSales.flatMap(f => f.rows.filter(r => !r.service && r.qty > 0).flatMap(r => [r.code && norm(r.code), 'n:' + norm(r.name)].filter(Boolean))) : null);
+    ws.oldStock = { prevMo, keys: keys ? new Set(keys) : null, qty: 0, saved: 0 };
+  }
   const cats = {}, catCost = {}, svcs = {}, ratioAcc = {}, pending = [];
   for (const b of BRANDS) ws.byBrand[b.id] = { qty: 0, rev: 0, imp: 0 };
   for (const f of S.sales) {
@@ -1004,7 +1017,11 @@ function compute() {
       let unit = costByCode.get(norm(r.code));
       if (unit == null) unit = costByName.get(norm(r.name));
       const sec = unit == null ? matchSection(`${r.name} ${r.category || ''}`) : null;
-      if (sec) unit = wsPrice(sec);
+      if (sec) {
+        const OS = ws.oldStock, old = !!(OS?.keys && WS_OLD[sec.name] && (OS.keys.has(norm(r.code)) || OS.keys.has('n:' + norm(r.name))));
+        unit = wsPrice(sec, old);
+        if (old && !isWs && unit != null && wsPrice(sec) != null) { OS.qty += r.qty; OS.saved += (wsPrice(sec) - unit) * r.qty; }
+      }
       const whv = unit != null ? unit * r.qty : null;
       if (sec && unit != null && !isWs) {
         const Q = ws.bySection[sec.name] = ws.bySection[sec.name] || { qty: 0, imp: 0, wh: 0, sales: 0 };
@@ -1701,6 +1718,11 @@ function renderWholesale() {
     tq.qty += Q.qty; tq.imp += Q.imp; tq.wh += Q.wh;
     return `<tr${Q.qty ? '' : ' style="color:var(--muted)"'}><td>${esc(sec.name)}</td><td class="n num">${wsPrice(sec) == null ? '—' : fmt(wsPrice(sec), 2) + (sec.isCarton ? ' / كرتون' : '')}</td><td class="n">${fmt(Q.qty)}</td><td class="n">${money(Q.imp)}</td><td class="n">${money(Q.wh)}</td><td class="n">${Q.qty ? signed(Q.wh - Q.imp) : '—'}</td></tr>`;
   }).join('')}<tr class="sum"><td>الإجمالي</td><td></td><td class="n">${fmt(tq.qty)}</td><td class="n">${money(tq.imp)}</td><td class="n">${money(tq.wh)}</td><td class="n">${signed(tq.wh - tq.imp)}</td></tr></tbody></table>`;
+  const OS = ws.oldStock, sn = $('#wsStockNote');
+  sn.hidden = !OS;
+  if (OS) sn.innerHTML = OS.keys
+    ? `شهر تغيير الأسعار: المنتجات المتوفرة من المخزون السابق (بيعت في ${esc(monthLabel(OS.prevMo))}) بالتكلفة القديمة · <span class="num">${fmt(OS.qty)}</span> حبة/كرتون، بفرق <span class="num">${money(OS.saved)}</span> عن الأسعار الجديدة · الجديدة أو غير المتوفرة بالتكلفة الجديدة`
+    : `شهر تغيير الأسعار: بانتظار مبيعات ${esc(monthLabel(OS.prevMo))} لمعرفة المنتجات المتوفرة من المخزون السابق (تُحسب بالتكلفة القديمة). حالياً كل المنتجات بالتكلفة الجديدة`;
   const un = Object.values(ws.unmatched);
   $('#wsUnmatchedCard').hidden = !un.length;
   if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th><th class="n">تكلفة الاستيراد</th><th class="n">تكلفة الجملة (تقديري)</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td><td class="n">${money(u.imp || 0)}</td><td class="n">${money(u.wh || 0)} <span class="badge">×${fmt(u.ratio || 1, 2)}</span></td></tr>`).join('')}</tbody></table>`;
@@ -2068,7 +2090,7 @@ $('#importBackup').onchange = async e => {
 window.__cpSnapshot = cid => {
   const only = o => (o && o[cid] ? { [cid]: o[cid] } : {});
   const geoOnly = list => list.filter(it => (it.n || {})[cid]).map(it => ({ name: it.name, at: it.at, n: { [cid]: it.n[cid] }, f: { [cid]: (it.f || {})[cid] || 0 } }));
-  const ws = cid === 'wholesale' ? { ...R.ws, missingImport: [...R.ws.missingImport] } : { matrix: only(R.ws.matrix), byBrand: {}, bySection: {}, unmatched: {}, missingImport: [] };
+  const ws = cid === 'wholesale' ? { ...R.ws, missingImport: [...R.ws.missingImport], oldStock: R.ws.oldStock && { ...R.ws.oldStock, keys: !!R.ws.oldStock.keys } } : { matrix: only(R.ws.matrix), byBrand: {}, bySection: {}, unmatched: {}, missingImport: [] };
   return JSON.parse(JSON.stringify({
     c: { [cid]: R.c[cid] }, ws, cats: only(R.cats), catCost: only(R.catCost), svcs: only(R.svcs),
     geo: R.geo ? { cities: geoOnly(R.geo.cities), districts: geoOnly(R.geo.districts) } : null,
