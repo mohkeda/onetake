@@ -870,6 +870,7 @@ function compute() {
     const cat = S.cls[r.account] || classify(r.account, r.group);
     const a = r.amount * flip, x = c[mainDirect(r)];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
+    if (r.center === 'main' && norm(r.account).includes('حكومي')) continue;   // government fees on the shared center are not a real profit or loss
     // salaries never come from Edara: they come only from the monthly payroll sheet
     if (/رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
     // fixed monthly expenses come from the fixed list, not from Edara
