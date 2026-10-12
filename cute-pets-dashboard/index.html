@@ -838,10 +838,11 @@ const FIXED_DEFAULT = [
   ['أتعاب المحاسب القانوني', { exhibit: 361.11, cpstore: 361.11, hamtaro: 361.11 }, 'محاسب'],
   ['اشتراك سلة', { cpstore: 249, hamtaro: 249, wagy: 249 }, 'اشتراك سل'],
   ['إهلاك سيارات', { cpstore: 404.36, hamtaro: 404.36, wagy: 404.36 }, 'اهلاك'],
+  ['تأمين سيارات', { cpstore: 99.44, hamtaro: 99.44, wagy: 99.44 }, 'تامين سيار'],
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
 ].map(([name, by, re]) => ({ name, by, re }));
-const fixedList = () => (store.settings.fixed4 || FIXED_DEFAULT);
+const fixedList = () => (store.settings.fixed5 || FIXED_DEFAULT);
 // Al Rajhi loan (625,000, 24 installments of 31,810.07 on the 15th). The expense is the profit part of the
 // month's installment («خدمة القرض»), split equally on the exhibit, Cute and Hamtaro as before; the principal is not an expense.
 const LOAN_PROFIT = { '2026-09': 7043.14, '2026-10': 6413.73, '2026-11': 6201.35, '2026-12': 5585.43, '2027-01': 5331.53, '2027-02': 4887.20,
@@ -1890,7 +1891,7 @@ function renderInputs() {
   $('#fixedTable').querySelectorAll('[data-fx]').forEach(inp => inp.onchange = () => {
     const list = fixedList().map(f => ({ ...f, by: { ...f.by } }));
     list[+inp.dataset.fx].by[inp.dataset.fc] = +inp.value || 0;
-    store.settings.fixed4 = list; persist(); refresh();
+    store.settings.fixed5 = list; persist(); refresh();
   });
 
   // classification table
