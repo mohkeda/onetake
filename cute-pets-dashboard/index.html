@@ -820,7 +820,7 @@ function excludeConsumption(rows) {
 /* ---------- shared-center accounts that belong to one store ---------- */
 // "هدايا الموقع الالكتروني" is Cute Pets' website; an account naming an online store goes to that store.
 // (The exhibit is left out on purpose: its consumption account is still under review.)
-const MAIN_DIRECT = [[/الموقع الالكتروني|الموقع الإلكتروني/, 'cpstore']];
+const MAIN_DIRECT = [[/الموقع الالكتروني|الموقع الإلكتروني/, 'cpstore'], [/استهلاك داخل المعرض|استهلاك المعرض/, 'exhibit']];
 function mainDirect(r) {
   if (r.center !== 'main') return r.center;
   const t = norm(r.account);
