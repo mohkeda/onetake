@@ -161,7 +161,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
 .stack { display: grid; gap: 10px; align-content: start; }
 .grid-2 > .stack { gap: 18px; }
 .stack-lg { display: grid; gap: 18px; }
-#wsBlock .chart { max-width: 620px; margin-inline: auto; }
+#chartBrands .chart { max-width: 620px; margin-inline: auto; }
 .center-sel { font-weight: 600; min-width: 170px; }
 .center-head { display: flex; align-items: center; gap: 10px; }
 .center-head h2 { font-size: 1.2rem; }
@@ -216,11 +216,12 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="table-wrap" id="plTable"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>مبيعات الأقسام خلال السنة</h2><p>للمراكز المختارة، من عمود التصنيف في تقارير المبيعات؛ أكبر ستة أقسام بألوانها والباقي في «أخرى»</p></div>
-        <div class="grid-2">
-          <div><h3 class="sub-h">المبيعات الشهرية حسب القسم</h3><div id="allCatYear"></div></div>
-          <div><h3 class="sub-h">نسبة كل قسم من مبيعات الشهر</h3><div id="allCatShare"></div></div>
-        </div>
+        <div class="card-head"><h2>مبيعات الأقسام خلال السنة</h2><p>للمراكز المختارة، من عمود التصنيف في تقارير المبيعات؛ أكبر الأقسام بالترتيب والباقي في «أخرى»</p></div>
+        <h3 class="sub-h">مبيعات كل قسم شهراً بشهر</h3>
+        <div id="allCatYear"></div>
+        <h3 class="sub-h" style="margin-top:14px">نسبة كل تصنيف من مبيعات الشهر</h3>
+        <div class="chips" id="allCatMonths" style="margin-bottom:8px"></div>
+        <div id="allCatShare"></div>
         <h3 class="sub-h" style="margin-top:14px">نسب الأقسام شهرياً</h3>
         <div class="table-wrap" id="allCatTable"></div>
       </div>
@@ -264,11 +265,12 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="table-wrap" id="stCats"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>مبيعات الأقسام خلال السنة</h2><p>من عمود التصنيف في تقرير المبيعات؛ أكبر ستة أقسام بألوانها والباقي في «أخرى»</p></div>
-        <div class="grid-2">
-          <div><h3 class="sub-h">المبيعات الشهرية حسب القسم</h3><div id="stCatYear"></div></div>
-          <div><h3 class="sub-h">نسبة كل قسم من مبيعات الشهر</h3><div id="stCatShare"></div></div>
-        </div>
+        <div class="card-head"><h2>مبيعات الأقسام خلال السنة</h2><p>من عمود التصنيف في تقرير المبيعات؛ أكبر الأقسام بالترتيب والباقي في «أخرى»</p></div>
+        <h3 class="sub-h">مبيعات كل قسم شهراً بشهر</h3>
+        <div id="stCatYear"></div>
+        <h3 class="sub-h" style="margin-top:14px">نسبة كل تصنيف من مبيعات الشهر</h3>
+        <div class="chips" id="stCatMonths" style="margin-bottom:8px"></div>
+        <div id="stCatShare"></div>
         <h3 class="sub-h" style="margin-top:14px">نسب الأقسام شهرياً</h3>
         <div class="table-wrap" id="stCatTable"></div>
       </div>
@@ -316,6 +318,16 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="card">
           <div class="card-head"><h2>براندات الجملة: الإيراد والتكلفة</h2><p>طول العمود = إيراد الجملة، مقسوم إلى تكلفة استيراد وربح</p></div>
           <div id="chartBrands"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>مقارنة المراكز في بيع البراندات</h2><p>مبيعات كل مركز من كل براند (سعر البيع للعميل)؛ «الجملة» = البيع المباشر لعملاء الجملة</p></div>
+          <h3 class="sub-h">الشهر المختار: كل براند حسب المركز</h3>
+          <div id="chartBrandCenters"></div>
+          <h3 class="sub-h" style="margin-top:14px">خلال السنة: مبيعات البراندات لكل مركز شهرياً</h3>
+          <div class="chips" id="brandYearPick" style="margin-bottom:8px"></div>
+          <div id="chartBrandYear"></div>
+          <h3 class="sub-h" style="margin-top:14px">حصة كل مركز من مبيعات البراند</h3>
+          <div class="table-wrap" id="brandShare"></div>
         </div>
         <div class="card">
           <div class="card-head"><h2>تقرير مبيعات الجملة</h2><p>الجملة تبيع للمتاجر والمحل بسعر الجملة (ربحها = سعر الجملة − تكلفة الاستيراد)، وعمود «الجملة» يظهر في الشهر الذي فيه مبيعات مباشرة لعملاء الجملة</p></div>
@@ -1347,6 +1359,9 @@ function summary(r) {
   const out = {};
   for (const ce of CENTERS) { const x = r.c[ce.id]; const bp = beParts(x);
     out[ce.id] = { variable: bp.variable, fixed: bp.fixed, ads: bp.ads, beNet: bp.net, revenue: x.revenue, gross: x.gross, net: x.net, tax: x.tax || 0, netAfter: x.netAfter ?? x.net, delivery: x.delivery, admin: x.adminT, opex: x.opex, exp: x.totalExp, cats: r.cats[ce.id] || {} }; }
+  // brand sales of every center, kept with the wholesale month for the year comparison
+  const r2 = n => Math.round(n * 100) / 100;
+  out.wholesale.brands = Object.fromEntries(Object.entries(r.ws?.matrix || {}).map(([cid, o]) => [cid, Object.fromEntries(Object.entries(o).map(([b, v]) => [b, { s: r2(v.sales || 0), w: r2(cid === 'wholesale' ? v.sales || 0 : v.wh || 0), q: v.qty || 0 }]))]));
   return out;
 }
 
@@ -1442,18 +1457,18 @@ function stackedColumns(el, items, segs, opts = {}) {
   bindTips(el, i => items[i].tip);
 }
 
-function lineChart(el, months, series) {
+function lineChart(el, months, series, opts = {}) {
   // series: [{id,label,color,values:[...]}]
   if (months.length < 2) { el.innerHTML = '<div class="empty">احفظ شهرين أو أكثر لعرض الاتجاه الشهري</div>'; return; }
-  const W = 520, H = 260, m = { t: 16, r: 16, b: 34, l: 52 };
+  const W = opts.W || 520, H = opts.H || 260, m = { t: 16, r: 16, b: 34, l: 52 };
   const all = series.flatMap(s => s.values);
   const sc = niceScale(Math.min(0, ...all), Math.max(0, ...all));
   const x = i => m.l + i * (W - m.l - m.r) / (months.length - 1);
   const y = v => m.t + (sc.hi - v) / (sc.hi - sc.lo) * (H - m.t - m.b);
-  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="صافي الربح الشهري">`;
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || 'صافي الربح الشهري')}">`;
   for (const t of sc.ticks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" class="num">${short(t)}</text>`;
   if (sc.lo < 0) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)" stroke-width="1.5"/>`;
-  const every = Math.ceil(months.length / 6);
+  const every = Math.ceil(months.length / (opts.W ? 12 : 6));
   months.forEach((mo, i) => { if (i % every === 0 || i === months.length - 1) s += `<text x="${x(i)}" y="${H - m.b + 18}" text-anchor="middle">${esc(monthLabel(mo))}</text>`; });
   for (const se of series) {
     s += `<polyline fill="none" stroke="var(${se.color})" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${se.values.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"/>`;
@@ -1755,29 +1770,84 @@ function renderStatement() {
   renderCatYear('st', [stCenter]);
 }
 
-/* ---------- category sales over the year (saved months of the selected month's year) ---------- */
+/* ---------- category sales over the year (saved months of the selected month's year), laid out like the monthly results workbook ---------- */
 const CAT_COLORS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
+const catPick = {};   // per section: the month shown in the share pie (this session only)
 function renderCatYear(pre, ids) {
   const mo = $('#month').value, yr = mo.slice(0, 4), HC = histSrc();
   const catsOf = k => { const o = {}; for (const id of ids) for (const [c, v] of Object.entries(HC[k]?.[id]?.cats || {})) o[c] = (o[c] || 0) + v; return o; };
   const months = Object.keys(HC).filter(k => k.startsWith(yr) && k <= mo && Object.values(catsOf(k)).some(v => v > 0)).sort();
-  const els = ['CatYear', 'CatShare', 'CatTable'].map(n => $('#' + pre + n));
-  if (!months.length) { els.forEach(e => e.innerHTML = '<div class="empty">لا توجد مبيعات مصنفة محفوظة لهذه السنة</div>'); return; }
+  const els = ['CatYear', 'CatShare', 'CatTable', 'CatMonths'].map(n => $('#' + pre + n));
+  if (!months.length) { els.forEach(e => e.innerHTML = ''); els[0].innerHTML = '<div class="empty">لا توجد مبيعات مصنفة محفوظة لهذه السنة</div>'; return; }
   const data = months.map(catsOf), tot = d => Object.values(d).reduce((a, b) => a + Math.max(0, b), 0);
   const year = {}; data.forEach(d => { for (const [c, v] of Object.entries(d)) year[c] = (year[c] || 0) + v; });
   const names = Object.keys(year).filter(c => year[c] > 0).sort((a, b) => year[b] - year[a]);
-  const top = names.slice(0, 6), rest = names.slice(6);
-  const segs = [...top.map((c, i) => ({ key: c, label: c, color: CAT_COLORS[i] })), ...(rest.length ? [{ key: '__other', label: 'أخرى', color: '--cost' }] : [])];
-  const fold = d => { const o = {}; for (const c of top) o[c] = Math.max(0, d[c] || 0); if (rest.length) o.__other = rest.reduce((a, c) => a + Math.max(0, d[c] || 0), 0); return o; };
   const lab = k => monthLabel(k).split(' ')[0];
-  const tipOf = (k, vals, total, pct) => `<b>${esc(monthLabel(k))}</b>` + segs.map(sg => tipRow(`<i class="dot" style="background:var(${sg.color});display:inline-block"></i> ${esc(sg.label)}`, pct ? fmt(vals[sg.key], 1) + '%' : money(vals[sg.key]))).join('') + (pct ? '' : tipRow('الإجمالي', money(total)));
-  stackedColumns(els[0], months.map((k, i) => { const v = fold(data[i]); return { label: lab(k), values: v, tip: tipOf(k, v, tot(data[i])) }; }), segs, { label: 'المبيعات الشهرية حسب القسم' });
-  stackedColumns(els[1], months.map((k, i) => { const f = fold(data[i]), t = tot(data[i]) || 1, v = Object.fromEntries(Object.entries(f).map(([c, x]) => [c, x / t * 100])); return { label: lab(k), values: v, tip: tipOf(k, v, 0, true) }; }), segs, { label: 'نسبة كل قسم من مبيعات الشهر', pct: true });
+
+  // 1) clustered columns: one group per category, one bar per month (older months lighter)
+  const MAXC = 8, top = names.slice(0, MAXC), rest = names.slice(MAXC);
+  const groups = [...top.map(c => ({ label: c, v: data.map(d => Math.max(0, d[c] || 0)) })),
+    ...(rest.length ? [{ label: 'أخرى', v: data.map(d => rest.reduce((a, c) => a + Math.max(0, d[c] || 0), 0)) }] : [])];
+  const shade = i => months.length < 2 ? 'var(--s1)' : `color-mix(in oklab, var(--s1) ${Math.round(30 + 70 * i / (months.length - 1))}%, var(--surface))`;
+  {
+    const W = 1100, H = 320, m = { t: 16, r: 12, b: 58, l: 52 };
+    const sc = niceScale(0, Math.max(...groups.flatMap(g => g.v)));
+    const y = v => m.t + (sc.hi - v) / (sc.hi - sc.lo) * (H - m.t - m.b);
+    const band = (W - m.l - m.r) / groups.length, inner = band * 0.84, bw = Math.max(2, inner / months.length - 2);
+    let sv = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="مبيعات كل قسم شهراً بشهر">`;
+    for (const t of sc.ticks) sv += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" class="num">${short(t)}</text>`;
+    sv += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)" stroke-width="1.5"/>`;
+    groups.forEach((g, gi) => {
+      const gx = W - m.r - band * (gi + 1) + (band - inner) / 2;   // RTL: largest category on the right
+      g.v.forEach((v, i) => {
+        const x0 = gx + inner - (i + 1) * (bw + 2) + 1, top = y(v), h = Math.max(0, y(0) - top), r = Math.min(3, h / 2, bw / 2);
+        sv += h > 0 ? `<path d="M${x0},${y(0)} V${top + r} Q${x0},${top} ${x0 + r},${top} H${x0 + bw - r} Q${x0 + bw},${top} ${x0 + bw},${top + r} V${y(0)} Z" fill="${shade(i)}" pointer-events="none"/>` : '';
+      });
+      const words = g.label.trim().split(/\s+/), l1 = words.slice(0, Math.ceil(words.length / 2)).join(' '), l2 = words.slice(Math.ceil(words.length / 2)).join(' ');
+      const cx = gx + inner / 2;
+      sv += `<text x="${cx}" y="${H - m.b + 18}" text-anchor="middle">${esc(l1)}</text>${l2 ? `<text x="${cx}" y="${H - m.b + 34}" text-anchor="middle">${esc(l2)}</text>` : ''}`;
+      sv += `<rect x="${gx - (band - inner) / 2}" y="${m.t}" width="${band}" height="${H - m.t - m.b}" fill="transparent" data-tip="${gi}"/>`;
+    });
+    sv += '</svg>';
+    sv += `<div class="legend">${months.map((k, i) => `<span><i class="dot" style="background:${shade(i)}"></i>${esc(lab(k))}</span>`).join('')}</div>`;
+    els[0].innerHTML = sv;
+    bindTips(els[0], gi => `<b>${esc(groups[gi].label)}</b>` + months.map((k, i) => tipRow(`<i class="dot" style="background:${shade(i)};display:inline-block"></i> ${esc(lab(k))}`, money(groups[gi].v[i]))).join('') + tipRow('السنة', money(groups[gi].v.reduce((a, b) => a + b, 0))));
+  }
+
+  // 2) pie of the chosen month: each category's share of that month's sales
+  if (catPick[pre] !== 'year' && !months.includes(catPick[pre])) catPick[pre] = months[months.length - 1];
+  els[3].innerHTML = months.map(k => `<button class="chip" data-m="${k}" aria-pressed="${k === catPick[pre]}">${esc(lab(k))}</button>`).join('')
+    + `<button class="chip" data-m="year" aria-pressed="${catPick[pre] === 'year'}">السنة كاملة</button>`;
+  els[3].querySelectorAll('[data-m]').forEach(bt => bt.onclick = () => { catPick[pre] = bt.dataset.m; renderCatYear(pre, ids); });
+  {
+    const pick = catPick[pre];
+    const d = pick === 'year' ? year : data[months.indexOf(pick)], t = tot(d) || 1;
+    const pt = names.slice(0, 6), pr = names.slice(6);
+    const slices = [...pt.map((c, i) => ({ label: c, v: Math.max(0, d[c] || 0), color: `var(${CAT_COLORS[i]})` })),
+      ...(pr.length ? [{ label: 'أخرى', v: pr.reduce((a, c) => a + Math.max(0, d[c] || 0), 0), color: 'var(--cost)' }] : [])].filter(x => x.v > 0);
+    const W = 300, R0 = 130, cx = 150, cy = 150;
+    let a0 = -Math.PI / 2, sv = `<svg class="chart" viewBox="0 0 ${W} ${W}" role="img" aria-label="نسبة كل تصنيف" style="max-width:320px">`;
+    slices.forEach((sl, i) => {
+      const f = sl.v / t, a1 = a0 + f * 2 * Math.PI, big = f > .5 ? 1 : 0;
+      const P = a => `${cx + R0 * Math.cos(a)},${cy + R0 * Math.sin(a)}`;
+      sv += f >= .9999 ? `<circle cx="${cx}" cy="${cy}" r="${R0}" fill="${sl.color}" data-tip="${i}"/>`
+        : `<path d="M${cx},${cy} L${P(a0)} A${R0},${R0} 0 ${big} 1 ${P(a1)} Z" fill="${sl.color}" stroke="var(--surface)" stroke-width="2" data-tip="${i}"/>`;
+      if (f >= .04) { const am = (a0 + a1) / 2, rl = R0 * .66; sv += `<text x="${cx + rl * Math.cos(am)}" y="${cy + rl * Math.sin(am) + 4}" text-anchor="middle" class="num" style="fill:#fff;font-weight:700;font-size:13px" pointer-events="none">${fmt(f * 100, 0)}%</text>`; }
+      a0 = a1;
+    });
+    sv += '</svg>';
+    const list = `<table style="max-width:420px"><tbody>${slices.map(sl => `<tr><td><i class="dot" style="background:${sl.color};display:inline-block;margin-inline-end:6px"></i>${esc(sl.label)}</td><td class="n">${money(sl.v)}</td><td class="n"><b>${fmt(sl.v / t * 100, 1)}%</b></td></tr>`).join('')}
+      <tr class="sum"><td>الإجمالي — ${esc(pick === 'year' ? 'السنة كاملة' : monthLabel(pick))}</td><td class="n">${money(t)}</td><td class="n">100%</td></tr></tbody></table>`;
+    els[1].innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center">${sv}<div class="table-wrap" style="flex:1;min-width:260px">${list}</div></div>`;
+    bindTips(els[1], i => `<b>${esc(slices[i].label)}</b>` + tipRow('المبيعات', money(slices[i].v)) + tipRow('النسبة', fmt(slices[i].v / t * 100, 1) + '%'));
+  }
+
+  // 3) every category's share per month (like the category table of the workbook)
   const yt = tot(year);
-  let t = `<table><thead><tr><th>القسم</th>${months.map(k => `<th class="n">${esc(lab(k))}</th>`).join('')}<th class="n">السنة</th><th class="n">مبيعات السنة</th></tr></thead><tbody>`;
-  for (const c of names) t += `<tr><td>${esc(c)}</td>${data.map(d => { const v = d[c] || 0, s = tot(d); return `<td class="n">${v > 0 && s ? fmt(v / s * 100, 1) + '%' : '—'}</td>`; }).join('')}<td class="n"><b>${fmt(year[c] / (yt || 1) * 100, 1)}%</b></td><td class="n">${money(year[c])}</td></tr>`;
-  t += `<tr class="sum"><td>إجمالي المبيعات</td>${data.map(d => `<td class="n">${short(tot(d))}</td>`).join('')}<td class="n">100%</td><td class="n">${money(yt)}</td></tr></tbody></table>`;
-  els[2].innerHTML = t;
+  let tb = `<table><thead><tr><th>التصنيف</th>${months.map(k => `<th class="n">${esc(lab(k))}</th>`).join('')}<th class="n">السنة</th><th class="n">مبيعات السنة</th></tr></thead><tbody>`;
+  for (const c of names) tb += `<tr><td>${esc(c)}</td>${data.map(d => { const v = d[c] || 0, s = tot(d); return `<td class="n">${v > 0 && s ? fmt(v / s * 100, 1) + '%' : '—'}</td>`; }).join('')}<td class="n"><b>${fmt(year[c] / (yt || 1) * 100, 1)}%</b></td><td class="n">${money(year[c])}</td></tr>`;
+  tb += `<tr class="sum"><td>إجمالي المبيعات</td>${data.map(d => `<td class="n">${short(tot(d))}</td>`).join('')}<td class="n">100%</td><td class="n">${money(yt)}</td></tr></tbody></table>`;
+  els[2].innerHTML = tb;
 }
 
 /* ---------- services: grooming and entertainment are separate revenue ---------- */
@@ -1981,6 +2051,8 @@ function renderWholesale() {
       tip: `<b>${b.name}</b>${tipRow('الكمية', fmt(B.qty))}${tipRow('إيراد الجملة', money(B.rev))}${tipRow('تكلفة الاستيراد', money(B.imp))}${tipRow('ربح الجملة', money(g), g < 0 ? 'neg' : '')}${tipRow('الهامش', pct(g, B.rev))}` };
   }), [{ key: 'cost', label: 'تكلفة الاستيراد', color: '--cost' }, { key: 'gp', label: 'ربح الجملة', color: '--s3' }], { label: 'براندات الجملة' });
 
+  renderBrandCenters();
+
   // "تقرير مبيعات الجملة" in the layout of the old Excel report
   // direct wholesale customers get their own column only in a month that has them
   const cols = ['cpstore', 'hamtaro', 'wagy', 'exhibit', ...(ws.matrix.wholesale ? ['wholesale'] : [])].map(id => ({ id, label: { exhibit: 'المحل (المعرض)', cpstore: 'كيوت', hamtaro: 'هامتارو', wagy: 'واجي', wholesale: 'الجملة' }[id] }));
@@ -2030,6 +2102,54 @@ function renderWholesale() {
   const un = Object.values(ws.unmatched);
   $('#wsUnmatchedCard').hidden = !un.length;
   if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th><th class="n">تكلفة الاستيراد</th><th class="n">تكلفة الجملة (تقديري)</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td><td class="n">${money(u.imp || 0)}</td><td class="n">${money(u.wh || 0)} <span class="badge">×${fmt(u.ratio || 1, 2)}</span></td></tr>`).join('')}</tbody></table>`;
+}
+
+// centers side by side in each brand: this month, the year, and the share table
+let brandYear = 'all';   // brand shown in the year chart (this session only)
+function renderBrandCenters() {
+  const M = R.ws.matrix, cids = ['exhibit', 'cpstore', 'hamtaro', 'wagy', 'wholesale'].filter(id => M[id]);
+  const used = BRANDS.filter(b => cids.some(id => (M[id][b.id]?.sales || 0) > 0));
+  const el = $('#chartBrandCenters');
+  if (!used.length) { el.innerHTML = '<div class="empty">لا توجد مبيعات براندات هذا الشهر</div>'; $('#brandShare').innerHTML = ''; }
+  else {
+    const W = 1100, H = 300, m = { t: 22, r: 12, b: 34, l: 52 };
+    const sc = niceScale(0, Math.max(...used.flatMap(b => cids.map(id => M[id][b.id]?.sales || 0))));
+    const y = v => m.t + (sc.hi - v) / (sc.hi - sc.lo) * (H - m.t - m.b);
+    const band = (W - m.l - m.r) / used.length, inner = band * 0.8, bw = Math.min(64, inner / cids.length - 4);
+    let sv = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="مبيعات البراندات حسب المركز">`;
+    for (const t of sc.ticks) sv += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${y(t) + 4}" text-anchor="end" class="num">${short(t)}</text>`;
+    sv += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)" stroke-width="1.5"/>`;
+    used.forEach((b, bi) => {
+      const cx = W - m.r - band * (bi + 0.5), gw = cids.length * (bw + 4) - 4;
+      cids.forEach((id, i) => {
+        const v = M[id][b.id]?.sales || 0, x0 = cx + gw / 2 - (i + 1) * (bw + 4) + 4, top = y(v), h = y(0) - top, r = Math.min(4, h / 2);
+        if (h > 0) sv += `<path d="M${x0},${y(0)} V${top + r} Q${x0},${top} ${x0 + r},${top} H${x0 + bw - r} Q${x0 + bw},${top} ${x0 + bw},${top + r} V${y(0)} Z" fill="var(${CMAP[id].color})" pointer-events="none"/>`;
+        if (v > 0) sv += `<text x="${x0 + bw / 2}" y="${top - 5}" text-anchor="middle" class="num" style="font-size:11px">${short(v)}</text>`;
+      });
+      sv += `<text x="${cx}" y="${H - m.b + 18}" text-anchor="middle" class="lbl-strong">${esc(b.name)}</text>`;
+      sv += `<rect x="${cx - band / 2}" y="${m.t}" width="${band}" height="${H - m.t - m.b}" fill="transparent" data-tip="${bi}"/>`;
+    });
+    sv += '</svg>' + `<div class="legend">${cids.map(id => `<span><i class="dot" style="background:var(${CMAP[id].color})"></i>${esc(CMAP[id].short)}</span>`).join('')}</div>`;
+    el.innerHTML = sv;
+    bindTips(el, bi => { const b = used[bi]; return `<b>${esc(b.name)}</b>` + cids.map(id => { const v = M[id][b.id] || {}; return tipRow(`<i class="dot" style="background:var(${CMAP[id].color});display:inline-block"></i> ${esc(CMAP[id].short)}`, `${money(v.sales || 0)} · ${fmt(v.qty || 0)} حبة`); }).join(''); });
+    // share of each center in each brand's sales
+    const tb = b => cids.reduce((a, id) => a + (M[id][b.id]?.sales || 0), 0), all = used.reduce((a, b) => a + tb(b), 0);
+    let t = `<table><thead><tr><th>المركز</th>${used.map(b => `<th class="n">${esc(b.name)}</th><th class="n">الحصة</th>`).join('')}<th class="n">الإجمالي</th><th class="n">الحصة</th></tr></thead><tbody>`;
+    for (const id of cids) { const tot = used.reduce((a, b) => a + (M[id][b.id]?.sales || 0), 0);
+      t += `<tr><td><i class="dot" style="background:var(${CMAP[id].color});display:inline-block;margin-inline-end:6px"></i>${esc(CMAP[id].short)}</td>${used.map(b => { const v = M[id][b.id]?.sales || 0; return `<td class="n">${v ? money(v) : '—'}</td><td class="n">${v ? fmt(v / (tb(b) || 1) * 100, 1) + '%' : '—'}</td>`; }).join('')}<td class="n">${money(tot)}</td><td class="n"><b>${fmt(tot / (all || 1) * 100, 1)}%</b></td></tr>`; }
+    t += `<tr class="sum"><td>الإجمالي</td>${used.map(b => `<td class="n">${money(tb(b))}</td><td class="n">100%</td>`).join('')}<td class="n">${money(all)}</td><td class="n">100%</td></tr></tbody></table>`;
+    $('#brandShare').innerHTML = t;
+  }
+  // the year: one line per center, all brands or one brand
+  const mo = $('#month').value, HC = histSrc();
+  const months = Object.keys(HC).filter(k => k.startsWith(mo.slice(0, 4)) && k <= mo && HC[k].wholesale?.brands && Object.keys(HC[k].wholesale.brands).length).sort();
+  const ybrands = BRANDS.filter(b => months.some(k => Object.values(HC[k].wholesale.brands).some(o => (o[b.id]?.s || 0) > 0)));
+  if (brandYear !== 'all' && !ybrands.some(b => b.id === brandYear)) brandYear = 'all';
+  $('#brandYearPick').innerHTML = [{ id: 'all', name: 'كل البراندات' }, ...ybrands].map(b => `<button class="chip" data-b="${b.id}" aria-pressed="${b.id === brandYear}">${esc(b.name)}</button>`).join('');
+  $('#brandYearPick').querySelectorAll('[data-b]').forEach(bt => bt.onclick = () => { brandYear = bt.dataset.b; renderBrandCenters(); });
+  const ycids = ['exhibit', 'cpstore', 'hamtaro', 'wagy', 'wholesale'].filter(id => months.some(k => HC[k].wholesale.brands[id]));
+  const val = (k, id) => Object.entries(HC[k].wholesale.brands[id] || {}).filter(([b]) => brandYear === 'all' || b === brandYear).reduce((a, [, v]) => a + (v.s || 0), 0);
+  lineChart($('#chartBrandYear'), months, ycids.map(id => ({ id, label: CMAP[id].short, color: CMAP[id].color, values: months.map(k => val(k, id)) })), { W: 1100, H: 300, label: 'مبيعات البراندات لكل مركز شهرياً' });
 }
 
 function renderManualInputs() {
