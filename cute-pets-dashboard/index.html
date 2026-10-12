@@ -1932,9 +1932,24 @@ function showTab(t) {
 $('#month').onchange = () => { if ($('#month').value) openMonth($('#month').value); };
 $('#saveMonth').onclick = () => {
   if (!R.hasIS && !R.hasOrders && !R.hasSales) { toast('لا توجد مدخلات لهذا الشهر بعد'); return; }
-  store.history[$('#month').value] = summary(R); persist(); refresh();
-  toast(`حُفظت نتائج ${monthLabel($('#month').value)}`);
+  const m = $('#month').value;
+  store.history[m] = summary(R); persist(); refresh();
+  if (S.demo || !R.hasIS) { toast(`حُفظت نتائج ${monthLabel(m)}`); return; }
+  pushCenterReports(m).then(ok => toast(ok ? `حُفظت نتائج ${monthLabel(m)} وأُرسلت لتقارير المراكز` : `حُفظت نتائج ${monthLabel(m)} على هذا الجهاز فقط (تعذّر الإرسال لتقارير المراكز)`));
 };
+// Saving a month also stores each center's computed results in the dashboard's private store
+// (editors/owner only), from which the separate per-center reports are rebuilt.
+let cpDb = null;
+if (!LOCK && window.claude?.use) window.claude.use('db').then(d => { cpDb = d; }, () => {});
+async function pushCenterReports(m) {
+  if (!cpDb) return false;
+  try {
+    const at = new Date().toISOString();
+    for (const ce of CENTERS.filter(c => !c.shared))
+      await cpDb.doc(`reports/${m}_${ce.id}`).set({ month: m, center: ce.id, at, snap: JSON.stringify(window.__cpSnapshot(ce.id)) });
+    return true;
+  } catch (e) { console.warn('center reports not stored', e); return false; }
+}
 $('#loadDemo').onclick = loadDemo;
 $('#clearMonth').onclick = () => { delete store.months[$('#month').value]; S = blankMonth(); raw = {}; persist(); refresh(); toast('مُسحت مدخلات الشهر'); };
 
