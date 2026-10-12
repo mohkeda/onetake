@@ -114,6 +114,8 @@ tr.sec td { font-family: var(--font-display); font-weight: 600; color: var(--acc
 .bar { display: inline-block; height: 10px; border-radius: 0 3px 3px 0; background: var(--s1); vertical-align: middle; }
 tr.sub td { font-weight: 600; }
 tr.indent td:first-child { padding-inline-start: 24px; color: var(--ink-2); }
+tr.indent2 td { color: var(--muted); font-size: .8rem; }
+tr.indent2 td:first-child { padding-inline-start: 44px; }
 
 .chart { width: 100%; height: auto; display: block; overflow: visible; }
 .chart text { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
@@ -961,7 +963,7 @@ function compute() {
   CENTERS.forEach(ce => finalize(c[ce.id]));
 
   // Distribute the shared "رئيسي" center to the stores, except the kept lines.
-  let mainAllocated = false;
+  let mainAllocated = false, mainPool = [];
   const M = c.main;
   if (set.mainBasis !== 'off' && (M.revenue || M.totalExp)) {
     const recips = CENTERS.filter(ce => !ce.shared).map(ce => {
@@ -973,6 +975,10 @@ function compute() {
     if (B) {
       const pool = { rev: M.revenue - M.kept.rev, admin: M.adminT - M.kept.admin, op: M.opex - M.kept.op };
       for (const { x, b } of recips) { x.mainShare = b / B; x.mainRev = pool.rev * x.mainShare; x.mainAdmin = pool.admin * x.mainShare; x.mainOp = pool.op * x.mainShare; }
+      // keep the pooled lines so each center's statement can show what its share is made of
+      mainPool = M.lines.filter(l => !isKept(l.account) && l.cat !== 'fuel' && l.cat !== 'pack').map(l => ({
+        grp: ['sales', 'contra', 'other', 'delivery'].includes(l.cat) ? 'rev' : l.cat === 'admin' ? 'admin' : 'op',
+        label: /دعاي/.test(norm(l.account)) && l.amount < 0 ? `${l.account} (كاش باك منصة درب)` : l.account, amount: l.amount }));
       // the shared center keeps only the excluded lines
       Object.assign(M, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: M.kept.rev, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, packAlloc: 0,
         admin: M.kept.admin, expenses: M.kept.op, lines: M.lines.filter(l => isKept(l.account)) });
@@ -980,7 +986,7 @@ function compute() {
       CENTERS.forEach(ce => finalize(c[ce.id]));
     }
   }
-  R = { c, ws, cats, catCost, svcs, mode, mainAllocated, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, ws, cats, catCost, svcs, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   return R;
 }
@@ -1308,7 +1314,9 @@ function renderStatement() {
   t += row('خدمات الشحن الخارجي', x.delOut, 'indent', 'rev');
   t += row('إيراد التوصيل داخل الرياض', x.delIn, 'indent', 'rev');
   for (const [a, v] of lines('other')) t += row(a, v, 'indent', 'rev');
-  if (x.mainRev) t += row(`حصة الرئيسي من الإيرادات (${fmt(x.mainShare * 100, 1)}%)`, x.mainRev, 'indent', 'rev');
+
+  const poolDetail = grp => R.mainPool.filter(l => l.grp === grp).forEach(l => { t += row(`↳ ${l.label}`, l.amount * x.mainShare, 'indent2', grp === 'rev' ? 'rev' : 'both'); });
+  if (x.mainRev) { t += row(`حصة الرئيسي من الإيرادات (${fmt(x.mainShare * 100, 1)}%)`, x.mainRev, 'indent', 'rev'); poolDetail('rev'); }
   const split = !x.ordAll && Math.abs(x.svcDiff) >= 0.5 ? svcSplit(stCenter, x.svcDiff) : null;
   if (split) split.forEach(([label, v]) => { t += row(label, v, 'indent', 'rev'); });
   else if (Math.abs(x.svcDiff) >= 0.5) t += row(x.ordAll ? 'ايراد الخدمات: الفرق عن تقرير الطلبات' : 'ايراد الخدمات', x.svcDiff, 'indent', 'rev');
@@ -1316,14 +1324,14 @@ function renderStatement() {
   t += `<tr class="sec"><td colspan="4">ثانياً: المصروفات</td></tr>`;
   t += row('المصاريف الإدارية', x.adminT, 'sub');
   for (const [a, v] of lines('admin')) t += row(a, v);
-  if (x.mainAdmin) t += row(`حصة الرئيسي من المصاريف الإدارية (${fmt(x.mainShare * 100, 1)}%)`, x.mainAdmin);
+  if (x.mainAdmin) { t += row(`حصة الرئيسي من المصاريف الإدارية (${fmt(x.mainShare * 100, 1)}%)`, x.mainAdmin); poolDetail('admin'); }
   t += row('المصاريف التشغيلية', x.opex, 'sub');
   t += row('تكلفة البضاعة المباعة', x.cogsMain);
   t += row('تكلفة بضاعة الجملة', x.cogsWs);
   for (const [a, v] of lines('expense')) t += row(a, v);
   t += row('محروقات (بعدد طلبات الرياض)', x.fuelAlloc);
   t += row('مستلزمات التغليف (بعدد الطلبات)', x.packAlloc);
-  if (x.mainOp) t += row(`حصة الرئيسي من المصاريف التشغيلية (${fmt(x.mainShare * 100, 1)}%)`, x.mainOp);
+  if (x.mainOp) { t += row(`حصة الرئيسي من المصاريف التشغيلية (${fmt(x.mainShare * 100, 1)}%)`, x.mainOp); poolDetail('op'); }
   t += row('إجمالي المصروفات', exp, 'sub');
   t += row('صافي الربح / الخسارة', x.net, 'sum', 'rev');
   t += '</tbody></table>';
