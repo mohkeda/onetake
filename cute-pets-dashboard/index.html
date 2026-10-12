@@ -1233,6 +1233,11 @@ function applyTax(R) {
 // Workbook sheets found copied from the month before: their sales and cost of goods are taken from that
 // month's sales report instead (approved by the owner).
 const ARCHIVE_FROM_SALES = { '2026-08': ['exhibit', 'cpstore'] };
+// April–July 2026: the general manager's salary (30,000, the owner) was booked as owner's drawings, not as salary.
+// The approved statements stay as they are; for the break-even only it is added as a fixed cost (equally on the four
+// centers of that time), so the break-even reads on the same basis all year.
+const OWNER_DRAW_MONTHS = { '2026-04': 30000, '2026-05': 30000, '2026-06': 30000, '2026-07': 30000 };
+const OWNER_DRAW_CENTERS = ['exhibit', 'cpstore', 'hamtaro', 'wagy'];
 function applyArchive(R, A) {
   const has = (t, ...ws) => ws.some(w => norm(t).includes(norm(w)));
   const withSales = !!S.sales?.length;   // the month's sales report was added: categories, costs and wholesale come from it
@@ -1275,6 +1280,8 @@ function applyArchive(R, A) {
       const brand = R.salesCalc.wholesale.revBrand;
       x.revBrand = brand; x.revMain = Math.max(0, R.ws.rev - brand); x.cogsMain = R.ws.imp;
     }
+    const ownerDraw = OWNER_DRAW_MONTHS[curMonthKey()];
+    if (ownerDraw && OWNER_DRAW_CENTERS.includes(ce.id)) x.beAdj = ownerDraw / OWNER_DRAW_CENTERS.length;
     x.salesRev = x.revMain + x.revBrand;
     x.delivery = x.delIn + x.delOut;
     x.revenue = x.revMain + x.revBrand + x.delivery + x.otherRev;
@@ -1287,7 +1294,7 @@ function applyArchive(R, A) {
 function summary(r) {
   const out = {};
   for (const ce of CENTERS) { const x = r.c[ce.id]; const bp = beParts(x);
-    out[ce.id] = { variable: bp.variable, fixed: bp.fixed, ads: bp.ads, revenue: x.revenue, gross: x.gross, net: x.net, tax: x.tax || 0, netAfter: x.netAfter ?? x.net, delivery: x.delivery, admin: x.adminT, opex: x.opex, exp: x.totalExp, cats: r.cats[ce.id] || {} }; }
+    out[ce.id] = { variable: bp.variable, fixed: bp.fixed, ads: bp.ads, beNet: bp.net, revenue: x.revenue, gross: x.gross, net: x.net, tax: x.tax || 0, netAfter: x.netAfter ?? x.net, delivery: x.delivery, admin: x.adminT, opex: x.opex, exp: x.totalExp, cats: r.cats[ce.id] || {} }; }
   return out;
 }
 
@@ -1504,6 +1511,7 @@ function renderResults() {
   $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
   const notes = [];
   if (r.payrollMissing) notes.push('⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب');
+  if (OWNER_DRAW_MONTHS[$('#month').value]) notes.push('راتب المدير العام (30,000) مسجل هذا الشهر مسحوبات مالك وليس مصروفاً: الأرباح لا تشمله، ونقطة التعادل تحسبه');
   if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يتحمل ${fmt(r.tax.rate * 100)}% من ربحه فقط، والفرق ${money(r.tax.total - r.tax.borne)} على مستوى الشركة (يظهر في الإجمالي فقط)`);
   if (r.archive) notes.push(r.salesCalc ? (Object.values(r.c).some(x => x.fromSales) ? 'المبيعات وتكلفة البضاعة لـ' + CENTERS.filter(ce => r.c[ce.id].fromSales).map(ce => ce.short).join(' و') + ' من تقرير المبيعات (الملف كان منسوخاً من الشهر السابق) · ' : '') + 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) · تكلفة بضاعة الجملة في المراكز وإيراد الجملة محسوبان من تقرير المبيعات بأسعار الجملة القديمة · الجملة لم تكن تتحمل أي مصاريف قبل سبتمبر' : 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
@@ -1698,8 +1706,9 @@ const ADS_EXP = /دعاي|اعلان/;
 function beParts(x) {
   const varLines = (x.lines || []).filter(l => (l.cat === 'expense' || l.cat === 'admin') && VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
   const variable = x.cogs + (x.fuelAlloc || 0) + (x.vehAlloc || 0) + (x.packAlloc || 0) + varLines;
+  const adj = x.beAdj || 0;   // owner's salary booked as drawings, counted as a fixed cost for the break-even only
   const ads = (x.lines || []).filter(l => l.cat === 'expense' && ADS_EXP.test(norm(l.account)) && !VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
-  return { rev: x.revenue, variable, fixed: x.totalExp - variable, ads, net: x.net };
+  return { rev: x.revenue, variable, fixed: x.totalExp - variable + adj, ads, net: x.net - adj, adj };
 }
 const beMix = {};   // per center: { category: share } chosen in the simulator (this session only)
 function renderBreakeven(ce, x) {
@@ -1710,7 +1719,7 @@ function renderBreakeven(ce, x) {
   const kpi = (l, v, sub, bad) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${bad ? 'neg' : ''}">${v}</div><div class="sub">${sub}</div></div>`;
   $('#beKpis').innerHTML =
     kpi('إجمالي الإيرادات', money(P.rev), `نسبة هامش المساهمة <span class="num">${fmt(cmr * 100, 1)}%</span> · كل 100 ريال مبيعات تعطي <span class="num">${fmt(cmr * 100, 0)}</span> ريال`) +
-    kpi('التكاليف الثابتة', money(P.fixed), `المتغيرة <span class="num">${money(P.variable)}</span> (<span class="num">${pct(P.variable, P.rev)}</span>)`) +
+    kpi('التكاليف الثابتة', money(P.fixed), `المتغيرة <span class="num">${money(P.variable)}</span> (<span class="num">${pct(P.variable, P.rev)}</span>)${P.adj ? ` · تشمل <span class="num">${money(P.adj)}</span> راتب المدير العام (مسجل مسحوبات مالك)` : ''}`) +
     kpi('نقطة التعادل', isFinite(BE) ? money(BE) : '—', isFinite(BE) ? (P.rev >= BE ? 'المبيعات فوق نقطة التعادل ▲' : 'المبيعات تحت نقطة التعادل ▼') : 'هامش المساهمة سالب', P.rev < BE) +
     kpi('هامش الأمان', isFinite(BE) ? money(P.rev - BE) : '—', isFinite(BE) ? `<span class="num">${fmt((P.rev - BE) / P.rev * 100, 1)}%</span> من الإيرادات` : '', P.rev < BE);
 
@@ -1719,9 +1728,10 @@ function renderBreakeven(ce, x) {
   if (!LOCK) H[mo] = summary(R);
   const ms = Object.keys(H).filter(k => k <= mo && H[k][ce.id]?.revenue && H[k][ce.id].variable != null).sort();
   const beOf = p => { const c = p.revenue ? (p.revenue - p.variable) / p.revenue : 0; return c > 0 ? p.fixed / c : Infinity; };
-  const tot = ms.reduce((a, k) => { const p = H[k][ce.id]; a.revenue += p.revenue; a.variable += p.variable; a.fixed += p.fixed; a.net += p.net; a.ads += p.ads || 0; return a; }, { revenue: 0, variable: 0, fixed: 0, net: 0, ads: 0 });
+  const tot = ms.reduce((a, k) => { const p = H[k][ce.id]; a.revenue += p.revenue; a.variable += p.variable; a.fixed += p.fixed; a.net += p.beNet ?? p.net; a.ads += p.ads || 0; return a; }, { revenue: 0, variable: 0, fixed: 0, net: 0, ads: 0 });
   const mrow = (label, p, cls = '') => { const b = beOf(p), d = p.revenue - b; return `<tr class="${cls}"><td>${label}</td><td class="n">${money(p.revenue)}</td><td class="n">${isFinite(b) ? money(b) : '—'}</td><td class="n ${d < 0 ? 'neg' : ''}">${isFinite(b) ? signed(d) : '—'}</td><td class="n num">${p.revenue ? fmt((p.revenue - p.variable) / p.revenue * 100, 1) + '%' : '—'}</td><td class="${d < 0 ? 'neg' : 'pos'}">${isFinite(b) ? (d >= 0 ? 'فوق التعادل ▲' : 'تحت التعادل ▼') : '—'}</td></tr>`; };
-  $('#beMonths').innerHTML = ms.length ? `<table><thead><tr><th>الشهر</th><th class="n">الإيرادات</th><th class="n">نقطة التعادل</th><th class="n">الفائض / (العجز)</th><th class="n">هامش المساهمة</th><th>الحالة</th></tr></thead><tbody>${ms.map(k => mrow(esc(monthLabel(k)), H[k][ce.id])).join('')}${ms.length > 1 ? mrow(`الإجمالي (${ms.length} أشهر)`, tot, 'sum') : ''}</tbody></table>` : '<div class="empty">لا توجد أشهر محفوظة</div>';
+  const anyAdj = ms.some(k => OWNER_DRAW_MONTHS[k]);
+  $('#beMonths').innerHTML = ms.length ? `${anyAdj ? '<p class="note">أبريل – يوليو: يشمل حصة المركز من راتب المدير العام (30,000 مسجلة مسحوبات مالك) في التكاليف الثابتة لقراءة نقطة التعادل على نفس الأساس طوال السنة؛ قائمة الدخل كما اعتُمدت.</p>' : ''}<table><thead><tr><th>الشهر</th><th class="n">الإيرادات</th><th class="n">نقطة التعادل</th><th class="n">الفائض / (العجز)</th><th class="n">هامش المساهمة</th><th>الحالة</th></tr></thead><tbody>${ms.map(k => mrow(esc(monthLabel(k)), H[k][ce.id])).join('')}${ms.length > 1 ? mrow(`الإجمالي (${ms.length} أشهر)`, tot, 'sum') : ''}</tbody></table>` : '<div class="empty">لا توجد أشهر محفوظة</div>';
 
   // one riyal of sales: this month and the period
   const rcol = p => [p.variable, p.fixed, p.net].map(v => `<td class="n num">${pct(v, p.revenue)}</td>`).join('');
