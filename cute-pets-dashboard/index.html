@@ -870,6 +870,8 @@ function fixedMatch(account, center) {
 
 /* ---------- commissions (paid the month after; booked here in the month earned) ---------- */
 const STORE_MANAGERS = { hamtaro: 'محمد عاطف' };
+// advertising shared between centers: [from, to, share moved]
+const AD_SHARES = [['cpstore', 'exhibit', 0.25]];
 const COMMISSIONS = { managerPct: 5, importPct: 2, fishPct: 0.65, perRiyadhOrder: 0.5 };
 // Tayar (delivery management platform): each store's monthly invoice, and the drivers' delivered orders per store from
 // its drivers report (one driver works for all three stores). A store without a report falls back to its Riyadh orders in Salla.
@@ -1207,6 +1209,15 @@ function compute() {
   }
   // The month's commissions (the owner's method), accrued in the month they are earned
   if (isRows.length) {
+    // Cute Pets' advertising is shared with the exhibit: 25% to the exhibit, 75% stays on the store (after the cashback)
+    for (const [from, to, share] of AD_SHARES) {
+      const ads = c[from].lines.filter(l => l.cat === 'expense' && ADS_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
+      const moved = ads * share;
+      if (!moved) continue;
+      c[from].expenses -= moved; c[from].lines.push({ account: 'مصاريف دعاية واعلان', cat: 'expense', amount: -moved });
+      c[to].expenses += moved; c[to].lines.push({ account: 'مصاريف دعاية واعلان', cat: 'expense', amount: moved });
+    }
+    CENTERS.forEach(ce => finalize(c[ce.id]));
     const C = COMMISSIONS;
     const catSum = (cid, re) => Object.entries(cats[cid] || {}).filter(([k]) => re.test(norm(k))).reduce((a, [, v]) => a + v, 0);
     const add = (cid, label, v) => { if (v > 0) { c[cid].expenses += v; c[cid].lines.push({ account: label, cat: 'expense', amount: v }); } };
