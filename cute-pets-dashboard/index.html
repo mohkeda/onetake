@@ -85,6 +85,9 @@ main section.panel { display: grid; gap: 18px; padding-top: 18px; }
 .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .card-head p { margin: 0; color: var(--muted); font-size: .82rem; }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 18px; }
+#stTable td, #stTable th, #stSummary td { white-space: nowrap; }
+#stTable td:first-child { width: 55%; }
+#tab-center > .card, #tab-center > .grid-2 { margin-bottom: 18px; }
 .sub-h { font-size: 14px; font-weight: 700; margin: 14px 0 8px; color: var(--ink, inherit); }
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 12px; }
@@ -223,25 +226,24 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
     <section class="panel" id="tab-center" hidden>
       <div class="center-head"><i class="dot big" id="cDot"></i><h2 id="stTitle"></h2><span class="badge" id="payWarn" hidden>⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب</span></div>
       <div class="kpis" id="cKpis"></div>
+      <!-- the summary first, then the full statement at full width so every line reads on one row -->
       <div class="grid-2">
         <div class="card">
-          <div class="card-head"><h2>قائمة الدخل</h2><p>النسبة من إجمالي المصروفات ومن إجمالي الإيرادات</p></div>
-          <div class="table-wrap" id="stTable"></div>
+          <div class="card-head"><h2>الملخص</h2></div>
+          <div class="table-wrap" id="stSummary"></div>
         </div>
-        <div class="stack">
-          <div class="card">
-            <div class="card-head"><h2>الملخص</h2></div>
-            <div class="table-wrap" id="stSummary"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><h2>صافي الربح الشهري</h2><p>من الأشهر المحفوظة</p></div>
-            <div id="chartCenterTrend"></div>
-          </div>
-          <div class="card" id="cDelCard">
-            <div class="card-head"><h2>التوصيل والمصاريف المحمّلة</h2></div>
-            <div class="table-wrap" id="cDel"></div>
-          </div>
+        <div class="card">
+          <div class="card-head"><h2>صافي الربح الشهري</h2><p>من الأشهر المحفوظة</p></div>
+          <div id="chartCenterTrend"></div>
         </div>
+      </div>
+      <div class="card st-full">
+        <div class="card-head"><h2>قائمة الدخل</h2><p>النسبة من إجمالي المصروفات ومن إجمالي الإيرادات</p></div>
+        <div class="table-wrap" id="stTable"></div>
+      </div>
+      <div class="card" id="cDelCard">
+        <div class="card-head"><h2>التوصيل والمصاريف المحمّلة</h2></div>
+        <div class="table-wrap" id="cDel"></div>
       </div>
       <div class="card geo-card" id="geoStore" hidden></div>
       <div class="card">
