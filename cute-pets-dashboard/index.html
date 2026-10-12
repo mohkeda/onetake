@@ -579,7 +579,9 @@ const DEFAULT_SETTINGS = { taxRate: 20, taxAddback: 30000, riyadh: 'الرياض
 let store = { months: {}, history: {}, settings: { ...DEFAULT_SETTINGS }, lastMonth: null };
 let S = blankMonth();
 let raw = {};           // parsed sheets kept in memory for re-mapping: { is, orders, costs, sales:[...] }
-let selected = new Set(CENTERS.map(c => c.id));
+// the shared «رئيسي» center is fully distributed and is not shown; only the company-level tax difference stays on it
+const SHOWN = CENTERS.filter(c => !c.shared);
+let selected = new Set(SHOWN.map(c => c.id));
 let R = null;           // last computed result
 
 function ordersFiles() {
@@ -1381,7 +1383,7 @@ function lineChart(el, months, series) {
 
 /* ---------- rendering ---------- */
 function renderChips() {
-  $('#centerChips').innerHTML = CENTERS.map(ce => `<button class="chip" data-c="${ce.id}" aria-pressed="${selected.has(ce.id)}"><i class="dot" style="background:var(${ce.color})"></i>${ce.name}</button>`).join('');
+  $('#centerChips').innerHTML = SHOWN.map(ce => `<button class="chip" data-c="${ce.id}" aria-pressed="${selected.has(ce.id)}"><i class="dot" style="background:var(${ce.color})"></i>${ce.name}</button>`).join('');
   $('#centerChips').querySelectorAll('.chip').forEach(b => b.onclick = () => {
     const id = b.dataset.c;
     if (selected.has(id)) { if (selected.size > 1) selected.delete(id); } else selected.add(id);
@@ -1392,8 +1394,10 @@ function signed(n) { return `<span class="num ${n < 0 ? 'neg' : ''}">${money(n)}
 
 function renderResults() {
   renderChips();
-  const r = R, sel = CENTERS.filter(ce => selected.has(ce.id));
-  const sum = k => sel.reduce((s, ce) => s + r.c[ce.id][k], 0);
+  const r = R, sel = SHOWN.filter(ce => selected.has(ce.id));
+  // with every center selected, the totals are the company's: they include what stays on the shared center (the company-level tax difference)
+  const shared = sel.length === SHOWN.length ? CENTERS.filter(ce => ce.shared) : [];
+  const sum = k => [...sel, ...shared].reduce((s, ce) => s + (r.c[ce.id][k] || 0), 0);
   const rev = sum('revenue'), net = sum('net'), del = sum('delivery');
   // previous saved month for deltas
   const months = Object.keys(store.history).sort();
@@ -1452,8 +1456,8 @@ function renderResults() {
   let t = `<table><thead><tr><th>البند</th>${sel.map(ce => `<th class="n"><i class="dot" style="background:var(${ce.color});display:inline-block;margin-inline-end:6px"></i>${ce.name}</th>`).join('')}<th class="n">الإجمالي</th></tr></thead><tbody>`;
   for (const [label, k, cls, sign = 1] of lines) {
     if (!k) { t += `<tr class="sec"><td colspan="${sel.length + 2}">${label}</td></tr>`; continue; }
-    const vals = sel.map(ce => r.c[ce.id][k] * sign);
-    t += `<tr class="${cls}"><td>${label}</td>${vals.map(v => `<td class="n">${signed(v)}</td>`).join('')}<td class="n">${signed(vals.reduce((a, b) => a + b, 0))}</td></tr>`;
+    const vals = sel.map(ce => (r.c[ce.id][k] || 0) * sign), extra = shared.reduce((a, ce) => a + (r.c[ce.id][k] || 0) * sign, 0);
+    t += `<tr class="${cls}"><td>${label}${k === 'tax' && extra ? ` <span class="badge" title="ضريبة راتب المدير العام وأثر المراكز الخاسرة">منها ${money(Math.abs(extra))} على مستوى الشركة</span>` : ''}</td>${vals.map(v => `<td class="n">${signed(v)}</td>`).join('')}<td class="n">${signed(vals.reduce((a, b) => a + b, 0) + extra)}</td></tr>`;
   }
   const revs = sel.map(ce => r.c[ce.id].revenue), nets = sel.map(ce => r.c[ce.id].net);
   t += `<tr><td>هامش صافي الربح</td>${sel.map((ce, i) => `<td class="n num">${pct(nets[i], revs[i])}</td>`).join('')}<td class="n num">${pct(nets.reduce((a, b) => a + b, 0), revs.reduce((a, b) => a + b, 0))}</td></tr>`;
@@ -1462,10 +1466,10 @@ function renderResults() {
   $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
   const notes = [];
   if (r.payrollMissing) notes.push('⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب');
-  if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يتحمل ${fmt(r.tax.rate * 100)}% من ربحه فقط، والباقي ${money(r.tax.total - r.tax.borne)} على الرئيسي`);
+  if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يتحمل ${fmt(r.tax.rate * 100)}% من ربحه فقط، والفرق ${money(r.tax.total - r.tax.borne)} على مستوى الشركة (يظهر في الإجمالي فقط)`);
   if (r.archive) notes.push(r.salesCalc ? (Object.values(r.c).some(x => x.fromSales) ? 'المبيعات وتكلفة البضاعة لـ' + CENTERS.filter(ce => r.c[ce.id].fromSales).map(ce => ce.short).join(' و') + ' من تقرير المبيعات (الملف كان منسوخاً من الشهر السابق) · ' : '') + 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) · تكلفة بضاعة الجملة في المراكز وإيراد الجملة محسوبان من تقرير المبيعات بأسعار الجملة القديمة · الجملة لم تكن تتحمل أي مصاريف قبل سبتمبر' : 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
-  if (r.mainAllocated) notes.push(`مصاريف الرئيسي موزعة ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}${store.settings.mainKeep ? ` ما عدا: ${store.settings.mainKeep}` : ''}`);
+  if (r.mainAllocated) notes.push(`مركز التكلفة المشترك (الرئيسي) موزع بالكامل: ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}، والمحروقات وصيانة السيارات والتغليف على المتاجر بالطلبات، والمصروفات الحكومية وتسوية المخزون متجاهلة`);
   if (r.ws.missingImport.size) notes.push(`لا يوجد عمود تكلفة الاستيراد في تقرير مبيعات ${[...r.ws.missingImport].map(id => CMAP[id].short).join('، ')}`);
   $('#plNote').textContent = notes.join(' · ');
 }
@@ -1893,7 +1897,7 @@ function renderInputs() {
 
   // history
   const hm = Object.keys(store.history).sort().reverse();
-  $('#historyTable').innerHTML = hm.length ? `<table><thead><tr><th>الشهر</th>${CENTERS.map(ce => `<th class="n">${ce.short}</th>`).join('')}<th class="n">صافي الشركة</th><th></th></tr></thead><tbody>${hm.map(mo => { const h = store.history[mo]; const tot = CENTERS.reduce((s, ce) => s + (h[ce.id]?.net || 0), 0); return `<tr><td>${esc(monthLabel(mo))}${store.months[mo]?.demo ? ' <span class="badge">تجريبي</span>' : ''}</td>${CENTERS.map(ce => `<td class="n">${signed(h[ce.id]?.net || 0)}</td>`).join('')}<td class="n">${signed(tot)}</td><td><button class="btn small" data-del="${mo}">حذف</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">لا توجد أشهر محفوظة بعد</div>';
+  $('#historyTable').innerHTML = hm.length ? `<table><thead><tr><th>الشهر</th>${SHOWN.map(ce => `<th class="n">${ce.short}</th>`).join('')}<th class="n">صافي الشركة</th><th></th></tr></thead><tbody>${hm.map(mo => { const h = store.history[mo]; const tot = CENTERS.reduce((s, ce) => s + (h[ce.id]?.net || 0), 0); return `<tr><td>${esc(monthLabel(mo))}${store.months[mo]?.demo ? ' <span class="badge">تجريبي</span>' : ''}</td>${SHOWN.map(ce => `<td class="n">${signed(h[ce.id]?.net || 0)}</td>`).join('')}<td class="n">${signed(tot)}</td><td><button class="btn small" data-del="${mo}">حذف</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="empty">لا توجد أشهر محفوظة بعد</div>';
   $('#historyTable').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { delete store.history[b.dataset.del]; delete store.months[b.dataset.del]; persist(); refresh(); });
 }
 
