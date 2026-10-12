@@ -859,6 +859,10 @@ function fixedMatch(account, center) {
 
 /* ---------- commissions (paid the month after; booked here in the month earned) ---------- */
 const COMMISSIONS = { managerPct: 5, importPct: 2, fishPct: 0.65, perRiyadhOrder: 0.5 };
+// Tayar (delivery management platform): each store's monthly invoice, and the drivers' delivered orders per store from
+// its drivers report (one driver works for all three stores). A store without a report falls back to its Riyadh orders in Salla.
+const TAYAR_INVOICES = { '2026-09': { cpstore: 113, hamtaro: 210, wagy: 58 } };
+const DRIVER_ORDERS = { '2026-09': { cpstore: { 'ميزان': 142, 'دادو': 96 }, hamtaro: { 'ميزان': 254, 'دادو': 205 }, wagy: { 'ميزان': 69, 'دادو': 47 } } };
 
 /* ---------- payroll (rules come from the sheet's notes) ---------- */
 // Edara accounts the payroll workbook's employee costs replace
@@ -947,6 +951,7 @@ function compute() {
     const a = r.amount * flip, x = c[mainDirect(r)];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
     if (r.center === 'main' && norm(r.account).includes('حكومي')) continue;   // government fees on the shared center are not a real profit or loss
+    if (TAYAR_INVOICES[curMonthKey()] && /طيار/.test(norm(r.account))) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: 'فاتورة طيار' }); continue; }
     // «عمولة مبيعات» in Edara is the commission paid for the month before: not this month's expense
     // (the month's own commissions are computed below, see COMMISSIONS)
     if (/عموله مبيعات/.test(norm(r.account))) continue;
@@ -1188,7 +1193,12 @@ function compute() {
     const add = (cid, label, v) => { if (v > 0) { c[cid].expenses += v; c[cid].lines.push({ account: label, cat: 'expense', amount: v }); } };
     add('exhibit', `عمولة منتجات الاستيراد في المحل (${C.importPct}% من مبيعات البراندات)`, c.exhibit.revBrand * C.importPct / 100);
     add('exhibit', `عمولة قسم الأسماك (${C.fishPct}% من مبيعات الأسماك)`, catSum('exhibit', /اسماك|سمك/) * C.fishPct / 100);
-    for (const ce of CENTERS.filter(ce => ce.delivery)) add(ce.id, `عمولة التوصيل للسواقين (${C.perRiyadhOrder} ريال × ${fmt(c[ce.id].ordIn)} طلب)`, c[ce.id].ordIn * C.perRiyadhOrder);
+    const mo = curMonthKey(), DR = DRIVER_ORDERS[mo] || {}, TY = TAYAR_INVOICES[mo] || {};
+    for (const ce of CENTERS.filter(ce => ce.delivery)) {
+      const rep = DR[ce.id], n = rep ? Object.values(rep).reduce((a, v) => a + v, 0) : c[ce.id].ordIn;
+      add(ce.id, `عمولة التوصيل للسواقين (${C.perRiyadhOrder} ريال × ${fmt(n)} طلب${rep ? ' من تقرير الطيارين' : ' داخل الرياض من سلة'})`, n * C.perRiyadhOrder);
+      add(ce.id, 'طيار (فاتورة المنصة)', TY[ce.id] || 0);
+    }
     CENTERS.forEach(ce => finalize(c[ce.id]));
     // store managers: a share of each online store's net profit, after the other costs
     for (const ce of CENTERS.filter(ce => ce.delivery)) add(ce.id, `عمولة مديري المتاجر (${C.managerPct}% من صافي الربح)`, Math.max(0, c[ce.id].net) * C.managerPct / 100);
