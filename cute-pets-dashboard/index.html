@@ -271,6 +271,11 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
             </div>
             <div class="table-wrap" id="beSim"></div></div>
         </div>
+        <div id="beAdsBlock">
+          <h3 class="sub-h" style="margin-top:14px">كفاءة الإعلان</h3>
+          <div class="kpis" id="beAdKpis"></div>
+          <div class="table-wrap" id="beAdTable"></div>
+        </div>
         <div id="beCatsBlock">
           <h3 class="sub-h" style="margin-top:14px">ربحية التصنيفات والمزيج البيعي</h3>
           <div class="table-wrap" id="beTable"></div>
@@ -512,7 +517,7 @@ const expandSales = list => (list || []).map(f => ({ fileName: f.f, center: f.c,
 function expandSeedData(d) {
   if (d.archive) return { ...blankMonth(), archive: d.archive, sales: expandSales(d.sales), cls: d.cls || {}, geoAgg: d.geo || null };
   // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup, cod]
-  return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
+  return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group, src]) => ({ account, center, amount, group, src })) },
     orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu, cod = 0]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cod, cancelled: !!ca, pickup: !!pu })) })) },
     sales: expandSales(d.sales),
     payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost, doctor], i) => ({ name: `موظف ${i + 1}`, cc, note, cost, doctor: !!doctor })), emp: d.payroll.emp || null } : null,
@@ -745,7 +750,7 @@ function parseIS(aoa, mapOverride) {
         }
       }
       if (SUBTOTAL.test(norm(acc))) continue;
-      map.cols.forEach((cid, i) => { if (cid && i !== map.account) { const v = toNum(r[i]); if (v) rows.push({ account: acc, center: cid, amount: v, group }); } });
+      map.cols.forEach((cid, i) => { if (cid && i !== map.account) { const v = toNum(r[i]); if (v) rows.push({ account: acc, center: cid, amount: v, group, src: String((aoa[map.header] || [])[i] ?? '').trim() }); } });
     }
   } else {
     map = mapOverride?.mode === 'long' ? mapOverride : { mode, header: hLong, ...longMap };
@@ -984,7 +989,7 @@ function compute() {
     // fixed monthly expenses come from the fixed list, not from Edara
     const fx = (cat === 'admin' || cat === 'expense') && fixedMatch(r.account, r.center);
     if (fx) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: fx.name }); continue; }
-    x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a });
+    x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a, src: r.src });
     if (cat === 'sales') x.salesRev += a;
     else if (cat === 'contra') x.salesRev -= Math.abs(a);
     else if (cat === 'delivery') { if (/خارج|شحن/.test(norm(r.account)) && !/داخل/.test(norm(r.account))) x.delOutIS += a; else x.delInIS += a; }
@@ -1749,6 +1754,18 @@ function svcSplit(cid, total) {
 // everything else in the center's expenses is fixed for the month.
 const VARIABLE_EXP = /تحصيل|تابي|تمارا|مدي|مدى|عموله|عمولات|خصم مسموح|الخصم المسموح|توصيل|شحن|تغليف|محروقات|صيانه سيارات|صيانه السيارات|طيار|مصاريف مبيعات|مصروف المبيعات|مصاريف المبيعات|هدايا|منتهيه الصلاحيه/;
 const ADS_EXP = /دعاي|اعلان/;
+// advertising platforms, from the Edara sub-center a line was booked on
+const AD_PLATFORMS = [['google', 'جوجل', /جوجل|google/], ['meta', 'ميتا', /ميتا|meta|فيس|انستا/], ['snap', 'سناب', /سناب|snap/],
+  ['tiktok', 'تيك توك', /تيك|tiktok/], ['whatsapp', 'واتساب', /واتس|whatsapp/], ['social', 'رواتب سوشيال', /سوشيال|social/]];
+const adPlatform = src => (AD_PLATFORMS.find(p => p[2].test(norm(src || ''))) || ['other', 'أخرى'])[0];
+function adSpend(x) {
+  const by = {}; let total = 0;
+  for (const l of (x.lines || []).filter(l => l.cat === 'expense' && ADS_EXP.test(norm(l.account)))) {
+    total += l.amount;
+    if (l.src) { const k = adPlatform(l.src); by[k] = (by[k] || 0) + l.amount; }
+  }
+  return { total, by };
+}
 // variable and fixed costs of a center's month (the definition of the monthly results workbook)
 function beParts(x) {
   const varLines = (x.lines || []).filter(l => (l.cat === 'expense' || l.cat === 'admin') && VARIABLE_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
@@ -1776,9 +1793,9 @@ function renderBreakeven(ce, x) {
   const ms = Object.keys(H).filter(k => k <= mo && H[k][ce.id]?.revenue && H[k][ce.id].variable != null).sort();
   const beOf = p => { const c = p.revenue ? (p.revenue - p.variable) / p.revenue : 0; return c > 0 ? p.fixed / c : Infinity; };
   const tot = ms.reduce((a, k) => { const p = H[k][ce.id]; a.revenue += p.revenue; a.variable += p.variable; a.fixed += p.fixed; a.net += p.beNet ?? p.net; a.ads += p.ads || 0; return a; }, { revenue: 0, variable: 0, fixed: 0, net: 0, ads: 0 });
-  const mrow = (label, p, cls = '') => { const b = beOf(p), d = p.revenue - b; return `<tr class="${cls}"><td>${label}</td><td class="n">${money(p.revenue)}</td><td class="n">${isFinite(b) ? money(b) : '—'}</td><td class="n ${d < 0 ? 'neg' : ''}">${isFinite(b) ? signed(d) : '—'}</td><td class="n num">${p.revenue ? fmt((p.revenue - p.variable) / p.revenue * 100, 1) + '%' : '—'}</td><td class="${d < 0 ? 'neg' : 'pos'}">${isFinite(b) ? (d >= 0 ? 'فوق التعادل ▲' : 'تحت التعادل ▼') : '—'}</td></tr>`; };
+  const mrow = (label, p, cls = '') => { const b = beOf(p), d = p.revenue - b; return `<tr class="${cls}"><td>${label}</td><td class="n">${money(p.revenue)}</td><td class="n">${isFinite(b) ? money(b) : '—'}</td><td class="n ${d < 0 ? 'neg' : ''}">${isFinite(b) ? signed(d) : '—'}</td><td class="n num">${p.revenue ? fmt((p.revenue - p.variable) / p.revenue * 100, 1) + '%' : '—'}</td><td class="n num">${p.ads > 0 ? fmt(p.revenue / p.ads, 2) + 'x' : '—'}</td><td class="${d < 0 ? 'neg' : 'pos'}">${isFinite(b) ? (d >= 0 ? 'فوق التعادل ▲' : 'تحت التعادل ▼') : '—'}</td></tr>`; };
   const anyAdj = ms.some(k => OWNER_DRAW_MONTHS[k]);
-  $('#beMonths').innerHTML = ms.length ? `${anyAdj ? '<p class="note">أبريل – يوليو: يشمل حصة المركز من راتب المدير العام (30,000 مسجلة مسحوبات مالك) في التكاليف الثابتة لقراءة نقطة التعادل على نفس الأساس طوال السنة؛ قائمة الدخل كما اعتُمدت.</p>' : ''}<table><thead><tr><th>الشهر</th><th class="n">الإيرادات</th><th class="n">نقطة التعادل</th><th class="n">الفائض / (العجز)</th><th class="n">هامش المساهمة</th><th>الحالة</th></tr></thead><tbody>${ms.map(k => mrow(esc(monthLabel(k)), H[k][ce.id])).join('')}${ms.length > 1 ? mrow(`الإجمالي (${ms.length} أشهر)`, tot, 'sum') : ''}</tbody></table>` : '<div class="empty">لا توجد أشهر محفوظة</div>';
+  $('#beMonths').innerHTML = ms.length ? `${anyAdj ? '<p class="note">أبريل – يوليو: يشمل حصة المركز من راتب المدير العام (30,000 مسجلة مسحوبات مالك) في التكاليف الثابتة لقراءة نقطة التعادل على نفس الأساس طوال السنة؛ قائمة الدخل كما اعتُمدت.</p>' : ''}<table><thead><tr><th>الشهر</th><th class="n">الإيرادات</th><th class="n">نقطة التعادل</th><th class="n">الفائض / (العجز)</th><th class="n">هامش المساهمة</th><th class="n">MER</th><th>الحالة</th></tr></thead><tbody>${ms.map(k => mrow(esc(monthLabel(k)), H[k][ce.id])).join('')}${ms.length > 1 ? mrow(`الإجمالي (${ms.length} أشهر)`, tot, 'sum') : ''}</tbody></table>` : '<div class="empty">لا توجد أشهر محفوظة</div>';
 
   // one riyal of sales: this month and the period
   const rcol = p => [p.variable, p.fixed, p.net].map(v => `<td class="n num">${pct(v, p.revenue)}</td>`).join('');
@@ -1796,6 +1813,24 @@ function renderBreakeven(ce, x) {
   };
   $('#beSimIn').querySelectorAll('input,select').forEach(el => el.oninput = sim);
   sim();
+
+  // advertising efficiency: MER on total revenue; ROAS per platform from the sales each platform reports
+  const AS = adSpend(x), mer = AS.total > 0 ? P.rev / AS.total : null, merMin = cmr > 0 ? 1 / cmr : null;
+  $('#beAdsBlock').hidden = !(AS.total > 0);
+  if (AS.total > 0) {
+    $('#beAdKpis').innerHTML =
+      kpi('صرف الإعلان', money(AS.total), `<span class="num">${pct(AS.total, P.rev)}</span> من الإيرادات`) +
+      kpi('MER', `${fmt(mer, 2)}x`, 'إجمالي الإيرادات ÷ صرف الإعلان', merMin && mer < merMin) +
+      kpi('الحد الأدنى لـ MER', merMin ? `${fmt(merMin, 2)}x` : '—', 'ليغطي هامش المساهمة صرف الإعلان') +
+      kpi('MER عند نقطة التعادل', isFinite(BE) ? `${fmt(BE / AS.total, 2)}x` : '—', 'الإيرادات اللازمة للتعادل ÷ صرف الإعلان');
+    const AR = (manualOf().adRev || {})[ce.id] || {}, plats = AD_PLATFORMS.filter(p => AS.by[p[0]] || AR[p[0]]);
+    const gross = Object.values(AS.by).reduce((a, v) => a + v, 0), other = AS.total - gross;
+    const otherLabel = AD_SHARES.some(([from]) => from === ce.id) ? 'كاش باك درب وحصة المعرض' : 'كاش باك درب';
+    $('#beAdTable').innerHTML = plats.length ? `<table><thead><tr><th>المنصة</th><th class="n">الصرف</th><th class="n">الحصة</th><th class="n">مبيعات المنصة</th><th class="n">ROAS</th></tr></thead><tbody>${plats.map(([k, label]) => {
+      const sp = AS.by[k] || 0, rv = AR[k];
+      return `<tr><td>${label}</td><td class="n">${money(sp)}</td><td class="n num">${pct(sp, gross)}</td><td class="n">${rv ? money(rv) : '—'}</td><td class="n num">${rv && sp > 0 ? fmt(rv / sp, 2) + 'x' : '—'}</td></tr>`;
+    }).join('')}${Math.abs(other) >= 1 ? `<tr class="sub"><td>إجمالي صرف المنصات</td><td class="n">${money(gross)}</td><td class="n num">100%</td><td></td><td></td></tr><tr><td>${otherLabel}</td><td class="n">${signed(other)}</td><td></td><td></td><td></td></tr>` : ''}<tr class="sum"><td>صافي صرف الإعلان</td><td class="n">${money(AS.total)}</td><td></td><td class="n">${Object.values(AR).some(Boolean) ? money(Object.values(AR).reduce((a, v) => a + (+v || 0), 0)) : '—'}</td><td></td></tr></tbody></table>${plats.some(([k]) => AR[k]) ? '' : '<p class="note">ROAS يظهر بعد إدخال مبيعات كل منصة (من لوحة المنصة) في تبويب المدخلات</p>'}` : '<p class="note">صرف الإعلان غير مفصل حسب المنصة لهذا الشهر</p>';
+  }
 
   // categories and the sales mix (needs the month's sales report)
   const sales = R.cats[ce.id] || {}, cost = R.catCost[ce.id] || {};
@@ -1952,7 +1987,7 @@ function renderWholesale() {
 function renderManualInputs() {
   const el = $('#manualInputs'); if (!el) return;
   if (S.archive && !S.is) { el.innerHTML = '<div class="empty">شهر مقفل مستورد من ملف النتائج: لا مدخلات</div>'; return; }
-  const DS = CENTERS.filter(ce => ce.delivery), TY = tayarInvoices() || {}, DR = driverOrders() || {}, fuel = fuelActual();
+  const DS = CENTERS.filter(ce => ce.delivery), TY = tayarInvoices() || {}, DR = driverOrders() || {}, fuel = fuelActual(), AR = manualOf().adRev || {};
   const names = [...new Set([...Object.values(DR).flatMap(o => Object.keys(o)), ...(S.manual?.driverNames || [])])];
   if (!names.length) names.push('');
   const inp = (attrs, v, w = 100) => `<input type="number" step="0.01" min="0" ${attrs} value="${v ?? ''}" style="width:${w}px">`;
@@ -1961,6 +1996,8 @@ function renderManualInputs() {
     <tr class="sub"><td>فاتورة طيار</td>${DS.map(ce => `<td class="n">${ce.short}<br>${inp(`data-mi="tayar" data-c="${ce.id}" aria-label="طيار ${ce.short}"`, TY[ce.id])}</td>`).join('')}</tr>
     <tr class="sub"><td>طلبات السواقين المسلَّمة</td>${DS.map(ce => `<td class="n">${ce.short}</td>`).join('')}</tr>
     ${names.map((n, i) => `<tr><td><input type="text" data-mi="dname" data-i="${i}" value="${esc(n)}" placeholder="اسم السواق" style="width:140px" aria-label="اسم السواق"></td>${DS.map(ce => `<td class="n">${inp(`data-mi="dord" data-i="${i}" data-c="${ce.id}" aria-label="طلبات ${esc(n)} ${ce.short}"`, DR[ce.id]?.[n], 80)}</td>`).join('')}</tr>`).join('')}
+    <tr class="sub"><td>مبيعات المنصة الإعلانية (لحساب ROAS)</td>${DS.map(ce => `<td class="n">${ce.short}</td>`).join('')}</tr>
+    ${AD_PLATFORMS.filter(p => p[0] !== 'social').map(([k, label]) => `<tr><td>${label}</td>${DS.map(ce => `<td class="n">${inp(`data-mi="adrev" data-p="${k}" data-c="${ce.id}" aria-label="مبيعات ${label} ${ce.short}"`, AR[ce.id]?.[k], 100)}</td>`).join('')}</tr>`).join('')}
     </tbody></table><div class="controls" style="margin-top:8px"><button class="btn small" id="miAddDriver">إضافة سواق</button></div>`;
   const read = () => {
     const m = { ...(S.manual || {}) };
@@ -1971,6 +2008,8 @@ function renderManualInputs() {
     el.querySelectorAll('[data-mi="dord"]').forEach(i => { const n = nm[+i.dataset.i]; if (n && i.value !== '') (dr[i.dataset.c] = dr[i.dataset.c] || {})[n] = +i.value; });
     m.driverNames = nm.filter(Boolean);
     if (Object.keys(dr).length) m.drivers = dr; else delete m.drivers;
+    const ar = {}; el.querySelectorAll('[data-mi="adrev"]').forEach(i => { if (i.value !== '') (ar[i.dataset.c] = ar[i.dataset.c] || {})[i.dataset.p] = +i.value; });
+    if (Object.keys(ar).length) m.adRev = ar; else delete m.adRev;
     S.manual = m; refresh();
   };
   el.querySelectorAll('input').forEach(i => i.onchange = read);

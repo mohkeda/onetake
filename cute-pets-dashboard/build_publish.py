@@ -8,7 +8,7 @@ geo_months_json = sys.argv[7] if len(sys.argv) > 7 else None   # per-month city/
 d = json.load(open(seed_json))
 r2 = lambda v: round(v, 2) if isinstance(v, float) else v
 compact = {
-  'is': {'f': d['is']['fileName'], 'r': [[x['account'], x['center'], r2(x['amount']), x.get('group')] for x in d['is']['rows']]},
+  'is': {'f': d['is']['fileName'], 'r': [[x['account'], x['center'], r2(x['amount']), x.get('group')] + ([x['src']] if x.get('src') else []) for x in d['is']['rows']]},
   'orders': [{'f': f['fileName'], 'c': f['center'], 'r': [[1 if o['city'] == 'Riyadh' else 0, r2(o['fee']), int(o['cancelled']), int(o['pickup']), r2(o.get('cod', 0))] for o in f['rows']]} for f in d['orders']['files']],
   'sales': None,
   'payroll': {'f': d['payroll']['fileName'], 'r': [[x['cc'], x['note'], r2(x['cost']), 1 if x.get('doctor') else 0] for x in d['payroll']['rows']], 'emp': d['payroll'].get('emp')} if d.get('payroll') else None,   # no employee names
