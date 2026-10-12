@@ -847,6 +847,9 @@ const LOAN_PROFIT = { '2026-09': 7043.14, '2026-10': 6413.73, '2026-11': 6201.35
   '2027-03': 4006.17, '2027-04': 3968.82, '2027-05': 3388.66, '2027-06': 3024.68, '2027-07': 2459.64, '2027-08': 2249.10, '2027-09': 1549.68,
   '2027-10': 1008.27, '2027-11': 525.03 };
 const LOAN_CENTERS = ['exhibit', 'cpstore', 'hamtaro'];
+// Workbook months whose loan line was copied from the month before: corrected to the schedule (January and
+// February also carried a second loan and stay as booked; March, April and June already match).
+const LOAN_FIX = { '2026-05': 8367.85, '2026-07': 7604.60, '2026-08': 7451.89 };
 function fixedMatch(account, center) {
   const t = norm(account);
   return fixedList().find(f => f.re && new RegExp(f.re).test(t) && !(f.re === 'ايجار' && center === 'wholesale'));
@@ -1197,6 +1200,8 @@ function applyArchive(R, A) {
   const withSales = !!S.sales?.length;   // the month's sales report was added: categories, costs and wholesale come from it
   // what the sales report gives for each center, kept to compare with the approved statement
   R.salesCalc = withSales ? Object.fromEntries(CENTERS.map(ce => { const x = R.c[ce.id]; return [ce.id, { revMain: x.revMain, revBrand: x.revBrand, cogsMain: x.cogsMain, cogsWs: x.cogsWs }]; })) : null;
+  const loanFix = LOAN_FIX[curMonthKey()], isLoan = acc => /قرض/.test(norm(acc));
+  const loanCenters = loanFix != null ? CENTERS.filter(ce => (A[ce.id]?.admin || []).some(([acc, v]) => isLoan(acc) && v)).map(ce => ce.id) : [];
   for (const ce of CENTERS) {
     const a = A[ce.id], x = R.c[ce.id];
     Object.assign(x, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: 0, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, vehAlloc: 0, packAlloc: 0,
@@ -1210,7 +1215,10 @@ function applyArchive(R, A) {
       else if (has(acc, 'التوصيل داخل الرياض')) x.delIn += v;
       else if (v) { x.otherRev += v; x.lines.push({ account: acc, cat: 'other', amount: v }); }
     }
-    for (const [acc, v] of a?.admin || []) if (v) { x.admin += v; x.lines.push({ account: acc, cat: 'admin', amount: v }); }
+    for (const [acc, v] of a?.admin || []) if (v) {
+      const amt = loanCenters.length && isLoan(acc) ? loanFix / loanCenters.length : v;
+      x.admin += amt; x.lines.push({ account: acc, cat: 'admin', amount: amt });
+    }
     for (const [acc, v] of a?.op || []) {
       if (has(acc, 'تكلفه بضاعه الجمله')) { if (!withSales) x.cogsWs += v; }   // with the sales report it is recomputed at the list prices (below)
       else if (has(acc, 'تكلفه البضاعه المباعه')) { if (!fromSales) x.cogsMain += v; }
