@@ -339,6 +339,8 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
           <div class="field"><label for="setMainBasis">توزيع مصاريف الرئيسي على المتاجر</label>
             <select id="setMainBasis"><option value="sales">بنسبة المبيعات</option><option value="orders">بعدد الطلبات</option><option value="equal">بالتساوي</option><option value="off">بدون توزيع (عمود مستقل)</option></select></div>
           <div class="field"><label for="setMainKeep">حسابات تبقى على الرئيسي ولا تُوزَّع</label><input type="text" id="setMainKeep" placeholder="مثال: حكومي, قرض"></div>
+          <div class="field"><label for="setTaxRate">نسبة ضريبة الدخل %</label><input type="number" id="setTaxRate" min="0" step="0.5"></div>
+          <div class="field"><label for="setTaxAddback">يُضاف للوعاء الضريبي (راتب المدير العام)</label><input type="number" id="setTaxAddback" min="0" step="500"></div>
           <div class="field"><label for="setWsMode">براندات الجملة المباعة في المتاجر</label>
             <select id="setWsMode"><option value="transfer">تكلفتها في المتجر بسعر قائمة الجملة</option><option value="off">بتكلفة الاستيراد من إدارة (بدون ربح للجملة)</option></select></div>
         </div>
@@ -453,11 +455,11 @@ const LOCK = /*LOCK*/null/*END*/;
 const histSrc = () => LOCK ? LOCK.hist : store.history;
 function expandSeed(d) {
   if (d.archive) return { ...blankMonth(), archive: d.archive };
-  // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup]
+  // compact form: sales rows [name, brand, qty, sales, importCost, category, store, service], orders [riyadh, fee, cancelled, pickup, cod]
   return { is: { fileName: d.is.f, rows: d.is.r.map(([account, center, amount, group]) => ({ account, center, amount, group })) },
-    orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cancelled: !!ca, pickup: !!pu })) })) },
+    orders: { files: d.orders.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([ri, fee, ca, pu, cod = 0]) => ({ store: '', city: ri ? 'Riyadh' : 'other', fee, cod, cancelled: !!ca, pickup: !!pu })) })) },
     sales: d.sales.map(f => ({ fileName: f.f, center: f.c, rows: f.r.map(([name, brand, qty, sales, bookCost, category = '', store = '', service = 0]) => ({ store, code: '', name, brand, category, qty, sales, bookCost, service: !!service })) })),
-    payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost], i) => ({ name: `موظف ${i + 1}`, cc, note, cost })) } : null,
+    payroll: d.payroll ? { fileName: d.payroll.f, rows: d.payroll.r.map(([cc, note, cost, doctor], i) => ({ name: `موظف ${i + 1}`, cc, note, cost, doctor: !!doctor })) } : null,
     geoAgg: d.geo || null,   // per city / Riyadh district totals for the order maps
     costs: null, cls: d.cls || {}, demo: false, k: 1 };
 }
@@ -527,7 +529,7 @@ function classify(account, group) {
 const SUBTOTAL = /(^|\s)(اجمالي|مجموع|صافي الربح|صافي الدخل|مجمل الربح|صافي الخساره|total|net income|gross profit)(\s|$)/;
 
 /* ---------- state ---------- */
-const DEFAULT_SETTINGS = { riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsMode: 'transfer', fixedAlloc: 'main', mainBasis: 'sales', mainKeep: 'حكومي', fuelManual: '', packManual: '' };
+const DEFAULT_SETTINGS = { taxRate: 20, taxAddback: 30000, riyadh: 'الرياض, riyadh', deliverySource: 'orders', wsMode: 'transfer', fixedAlloc: 'main', mainBasis: 'sales', mainKeep: 'حكومي', fuelManual: '', packManual: '' };
 let store = { months: {}, history: {}, settings: { ...DEFAULT_SETTINGS }, lastMonth: null };
 let S = blankMonth();
 let raw = {};           // parsed sheets kept in memory for re-mapping: { is, orders, costs, sales:[...] }
@@ -573,6 +575,7 @@ const FIELDS = {
     ['orderNo', 'رقم الطلب', ['رقم الطلب', 'رقم الفاتوره', 'order no', 'order id', 'order']],
     ['store', 'المتجر', ['المتجر', 'اسم المتجر', 'نقطه البيع', 'store', 'shop']],
     ['city', 'المدينة *', ['المدينه', 'مدينه', 'المنطقه', 'مدينه الشحن', 'city', 'region']],
+    ['cod', 'عمولة الدفع عند الاستلام', ['عموله الدفع عند الاستلام', 'رسوم الدفع عند الاستلام', 'cod fee']],
     ['fee', 'رسوم التوصيل', ['تكلفه الشحن', 'رسوم التوصيل', 'قيمه التوصيل', 'رسوم الشحن', 'قيمه الشحن', 'التوصيل', 'الشحن', 'shipping', 'delivery']],
     ['status', 'الحالة', ['حاله الطلب', 'الحاله', 'status']],
     ['ship', 'يتطلب شحن', ['يتطلب شحن', 'requires shipping']],
@@ -710,7 +713,7 @@ function parseTable(kind, aoa, mapOverride) {
     if (kind === 'orders') {
       const status = norm(get(r, 'status'));
       const ship = norm(get(r, 'ship'));
-      rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), fee: toNum(get(r, 'fee')),
+      rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), fee: toNum(get(r, 'fee')), cod: toNum(get(r, 'cod')),
         cancelled: /ملغ|الغاء|محذوف|مسترجع|مرتجع|بانتظار الدفع|cancel|deleted|refund/.test(status),
         pickup: ship === 'لا' || ship === 'no', ...geoOf(get(r, 'addr'), get(r, 'maplink')) });
     } else if (kind === 'sales') {
@@ -731,7 +734,7 @@ function parseTable(kind, aoa, mapOverride) {
       const gross = toNum(get(r, 'gross')) || toNum(get(r, 'base')) + toNum(get(r, 'overtime'));
       // cost to the company: salary + overtime − penalties − lateness − absence (advances are not a cost)
       const cost = gross - toNum(get(r, 'penalty')) - toNum(get(r, 'late')) - toNum(get(r, 'absence'));
-      rows.push({ name, cc: String(get(r, 'cc')).trim(), note: String(get(r, 'note')).trim(), cost });
+      rows.push({ name, cc: String(get(r, 'cc')).trim(), note: String(get(r, 'note')).trim(), cost, doctor: /دكتور|طبيب|(^|\s)د\s*\./.test(name + ' ' + String(get(r, 'note'))) });
     } else if (kind === 'costs') {
       const cost = toNum(get(r, 'cost'));
       if (!cost) continue;
@@ -791,16 +794,16 @@ function fixedMatch(account, center) {
 }
 
 /* ---------- payroll (rules come from the sheet's notes) ---------- */
-const PAY_LINES = { staff: 'الرواتب', mgmt: 'رواتب الإدارة', saudi: 'رواتب السعوديين (سعودة)' };
+const PAY_LINES = { staff: 'الرواتب', doctor: 'رواتب الدكتور', mgmt: 'رواتب الإدارة', saudi: 'رواتب السعوديين (سعودة)' };
 function payrollAlloc(rows) {
   const byCenter = {}, unknown = [];
-  const add = (cid, kind, v) => { const B = byCenter[cid] = byCenter[cid] || { staff: 0, mgmt: 0, saudi: 0 }; B[kind] += v; };
+  const add = (cid, kind, v) => { const B = byCenter[cid] = byCenter[cid] || { staff: 0, doctor: 0, mgmt: 0, saudi: 0 }; B[kind] += v; };
   const salesCenters = CENTERS.filter(ce => !ce.shared).map(ce => ce.id);
   const onlineStores = CENTERS.filter(ce => ce.delivery).map(ce => ce.id);
   for (const r of rows) {
     const note = norm(r.note), cc = norm(r.cc), both = `${note} ${cc}`;
     const nSplit = +((both.match(/(\d+)\s*(مراكز|متاجر)/) || [])[1] || 0);
-    let kind = /اداره|اداري/.test(note) ? 'mgmt' : /سعود/.test(note) ? 'saudi' : 'staff';
+    let kind = /اداره|اداري/.test(note) ? 'mgmt' : /سعود/.test(note) ? 'saudi' : r.doctor ? 'doctor' : 'staff';
     let targets;
     if (/متاجر/.test(both) && nSplit) targets = onlineStores;           // "يقسم على 3 متاجر"
     else if (/مراكز/.test(both) && nSplit) targets = salesCenters;     // "يقسم على 5 مراكز"
@@ -851,7 +854,7 @@ function compute() {
   const set = store.settings;
   const c = {};
   for (const ce of CENTERS) c[ce.id] = { salesRev: 0, otherRev: 0, delIn: 0, delOut: 0, delInIS: 0, delOutIS: 0, cogsIS: 0, admin: 0, expenses: 0,
-    fuelOwn: 0, packOwn: 0, vehOwn: 0, fuelAlloc: 0, packAlloc: 0, vehAlloc: 0, ordIn: 0, ordOut: 0, ordPick: 0, lines: [],
+    fuelOwn: 0, packOwn: 0, vehOwn: 0, cod: 0, fuelAlloc: 0, packAlloc: 0, vehAlloc: 0, ordIn: 0, ordOut: 0, ordPick: 0, lines: [],
     kept: { rev: 0, admin: 0, op: 0 }, mainRev: 0, mainAdmin: 0, mainOp: 0, mainShare: 0 };
   // Lines of the shared center that are NOT distributed to the stores (e.g. government fees).
   const keepWords = String(set.mainKeep || '').split(/[,،]/).map(norm).filter(Boolean);
@@ -904,7 +907,7 @@ function compute() {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
     }
   }
-  if (pay) for (const [cid, B] of Object.entries(pay.byCenter)) for (const k of ['staff', 'mgmt', 'saudi']) if (B[k]) {
+  if (pay) for (const [cid, B] of Object.entries(pay.byCenter)) for (const k of ['staff', 'doctor', 'mgmt', 'saudi']) if (B[k]) {
     c[cid].admin += B[k]; c[cid].lines.push({ account: PAY_LINES[k], cat: 'admin', amount: B[k] });
   }
 
@@ -921,6 +924,7 @@ function compute() {
     const cid = byCol && !CMAP[byCol].shared ? byCol : f.center;
     if (!cid) { unknownStores[o.store || '(فارغ)'] = (unknownStores[o.store || '(فارغ)'] || 0) + 1; continue; }
     const x = c[cid];
+    x.cod += o.cod || 0;
     if (o.pickup) { x.ordPick++; continue; }
     if (riy.some(k => norm(o.city).includes(k))) { x.ordIn++; x.delIn += o.fee; } else { x.ordOut++; x.delOut += o.fee; }
   }
@@ -949,7 +953,12 @@ function compute() {
     }
     x.svcDiff = 0;
     if (!(hasOrders && set.deliverySource === 'orders')) { x.delIn = x.delInIS; x.delOut = x.delOutIS; }
-    else { x.svcDiff = x.delInIS + x.delOutIS - x.delIn - x.delOut; x.otherRev += x.svcDiff; }
+    else {
+      // the cash-on-delivery fee (Salla) is its own revenue line; what is left is the difference from Edara
+      x.cod = Math.min(x.cod, Math.max(0, x.delInIS + x.delOutIS - x.delIn - x.delOut));
+      if (x.cod) x.lines.push({ account: 'ايراد الدفع عند الاستلام', cat: 'other', amount: x.cod });
+      x.svcDiff = x.delInIS + x.delOutIS - x.delIn - x.delOut - x.cod; x.otherRev += x.svcDiff + x.cod;
+    }
   }
 
   // Wholesale brands.
@@ -1075,7 +1084,23 @@ function compute() {
   R = { c, geo, ws, cats, catCost, svcs, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   if (S.archive && !S.is) applyArchive(R, S.archive);
+  applyTax(R);
   return R;
+}
+// Income tax: 20% of the company's profit plus the general manager's salary (not deductible), then each
+// sales center bears a share in proportion to its own base (its profit plus its part of that salary).
+function applyTax(R) {
+  const rate = (+store.settings.taxRate || 0) / 100, addback = +store.settings.taxAddback || 0;
+  const present = CENTERS.filter(ce => !ce.shared && (R.c[ce.id].revenue || R.c[ce.id].totalExp));
+  const base = Object.fromEntries(present.map(ce => [ce.id, R.c[ce.id].net + addback / (present.length || 1)]));
+  const companyBase = Object.values(base).reduce((a, b) => a + b, 0) + CENTERS.filter(ce => ce.shared).reduce((a, ce) => a + R.c[ce.id].net, 0);
+  const total = rate * Math.max(0, companyBase), pos = Object.values(base).reduce((a, b) => a + Math.max(0, b), 0);
+  for (const ce of CENTERS) {
+    const x = R.c[ce.id];
+    x.tax = pos && base[ce.id] > 0 ? total * base[ce.id] / pos : 0;
+    x.netAfter = x.net - x.tax;
+  }
+  R.tax = { rate, addback, base: companyBase, total };
 }
 // A month closed before the dashboard (imported from the monthly Excel workbook): each center's statement
 // is taken line by line as it was approved, with no allocation rules applied on top.
@@ -1109,7 +1134,7 @@ function applyArchive(R, A) {
 }
 function summary(r) {
   const out = {};
-  for (const ce of CENTERS) { const x = r.c[ce.id]; out[ce.id] = { revenue: x.revenue, gross: x.gross, net: x.net, delivery: x.delivery, admin: x.adminT, opex: x.opex, exp: x.totalExp, cats: r.cats[ce.id] || {} }; }
+  for (const ce of CENTERS) { const x = r.c[ce.id]; out[ce.id] = { revenue: x.revenue, gross: x.gross, net: x.net, tax: x.tax || 0, netAfter: x.netAfter ?? x.net, delivery: x.delivery, admin: x.adminT, opex: x.opex, exp: x.totalExp, cats: r.cats[ce.id] || {} }; }
   return out;
 }
 
@@ -1269,7 +1294,7 @@ function renderResults() {
     ['إجمالي الإيرادات', rev, 'revenue', `منها توصيل وشحن <span class="num">${money(del)}</span>`],
     ['المصاريف الإدارية', sum('adminT'), 'admin', `<span class="num">${pct(sum('adminT'), rev)}</span> من الإيرادات`],
     ['المصاريف التشغيلية', sum('opex'), 'opex', `منها تكلفة البضاعة <span class="num">${money(sum('cogs'))}</span>`],
-    ['صافي الربح / الخسارة', net, 'net', `هامش صافي <span class="num">${pct(net, rev)}</span>`],
+    ['صافي الربح / الخسارة', net, 'net', `هامش صافي <span class="num">${pct(net, rev)}</span> · بعد الضريبة <span class="num">${money(sum('netAfter'))}</span>`],
   ].map(([l, v, k, sub]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${v < 0 ? 'neg' : ''}">${money(v)}</div><div class="sub">${sub}</div>${delta(v, k)}</div>`).join('');
 
   columnChart($('#chartNet'), sel.map(ce => {
@@ -1306,6 +1331,8 @@ function renderResults() {
     ['المصاريف التشغيلية', 'opex', 'sub', -1],
     ['إجمالي المصروفات', 'totalExp', 'sub', -1],
     ['صافي الربح / الخسارة', 'net', 'sum'],
+    ['ضريبة الدخل', 'tax', 'indent', -1],
+    ['صافي الربح بعد الضريبة', 'netAfter', 'sum'],
   ];
   let t = `<table><thead><tr><th>البند</th>${sel.map(ce => `<th class="n"><i class="dot" style="background:var(${ce.color});display:inline-block;margin-inline-end:6px"></i>${ce.name}</th>`).join('')}<th class="n">الإجمالي</th></tr></thead><tbody>`;
   for (const [label, k, cls, sign = 1] of lines) {
@@ -1320,6 +1347,7 @@ function renderResults() {
   $('#plTable').innerHTML = r.hasIS || r.hasOrders || r.hasSales ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات، أو اضغط «تحميل بيانات تجريبية»</div>';
   const notes = [];
   if (r.payrollMissing) notes.push('⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب');
+  if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}، موزعة على المراكز الرابحة بنسبة وعاء كل مركز`);
   if (r.archive) notes.push('شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
   if (r.mainAllocated) notes.push(`مصاريف الرئيسي موزعة ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}${store.settings.mainKeep ? ` ما عدا: ${store.settings.mainKeep}` : ''}`);
@@ -1368,7 +1396,7 @@ function renderStatement() {
     ['إجمالي الإيرادات', x.revenue, 'revenue', `منها مبيعات الجملة <span class="num">${money(x.revBrand)}</span>`, true],
     ['المصاريف الإدارية', x.adminT, 'admin', `<span class="num">${pct(x.adminT, x.revenue)}</span> من الإيرادات`, false],
     ['المصاريف التشغيلية', x.opex, 'opex', `<span class="num">${pct(x.opex, x.revenue)}</span> من الإيرادات`, false],
-    ['صافي الربح / الخسارة', x.net, 'net', `هامش صافي <span class="num">${pct(x.net, x.revenue)}</span>`, true],
+    ['صافي الربح / الخسارة', x.net, 'net', `هامش صافي <span class="num">${pct(x.net, x.revenue)}</span> · بعد الضريبة <span class="num">${money(x.netAfter ?? x.net)}</span>`, true],
   ].map(([l, v, k, sub, up]) => `<div class="kpi"><div class="lbl">${l}</div><div class="val num ${v < 0 ? 'neg' : ''}">${money(v)}</div><div class="sub">${sub}</div>${delta(v, k, up)}</div>`).join('');
 
   // monthly trend for this center
@@ -1458,6 +1486,8 @@ function renderStatement() {
   if (x.mainOp) { t += row(`حصة الرئيسي من المصاريف التشغيلية (${fmt(x.mainShare * 100, 1)}%)`, x.mainOp); poolDetail('op'); }
   t += row('إجمالي المصروفات', exp, 'sub');
   t += row('صافي الربح / الخسارة', x.net, 'sum', 'rev');
+  if (x.tax) t += row('ضريبة الدخل (حصة المركز)', -x.tax, 'indent', 'rev');
+  t += row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'rev');
   t += '</tbody></table>';
   $('#stTable').innerHTML = R.hasIS ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات</div>';
 
@@ -1466,7 +1496,7 @@ function renderStatement() {
     ${row('خدمات الشحن الخارجي', x.delOut, '', 'none')}${row('إيراد التوصيل داخل الرياض', x.delIn, '', 'none')}
     ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${split ? split.map(([label, v]) => row(label, v, '', 'none')).join('') : Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}${x.mainRev ? row('حصة الرئيسي من الإيرادات', x.mainRev, '', 'none') : ''}
     ${row('إجمالي الإيرادات', rev, 'sub', 'none')}${row('المصاريف الإدارية', x.adminT, '', 'none')}${row('المصاريف التشغيلية', x.opex, '', 'none')}
-    ${row('إجمالي المصروفات', exp, 'sub', 'none')}${row('صافي الربح / الخسارة', x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
+    ${row('إجمالي المصروفات', exp, 'sub', 'none')}${row('صافي الربح / الخسارة', x.net, 'sum', 'none')}${x.tax ? row('ضريبة الدخل (حصة المركز)', -x.tax, '', 'none') : ''}${row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
 
   // Sales by category: the current month next to the last saved months
   const cur = R.cats[stCenter] || {};
@@ -1994,6 +2024,8 @@ bindSetting('#setWsMode', 'wsMode');
 bindSetting('#setMainBasis', 'mainBasis');
 bindSetting('#setFixedAlloc', 'fixedAlloc');
 bindSetting('#setMainKeep', 'mainKeep');
+bindSetting('#setTaxRate', 'taxRate');
+bindSetting('#setTaxAddback', 'taxAddback');
 bindSetting('#fuelManual', 'fuelManual', 'input');
 bindSetting('#packManual', 'packManual', 'input');
 
