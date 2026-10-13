@@ -1132,7 +1132,7 @@ function compute() {
     const keys = S.oldStock || (prevSales.length ? prevSales.flatMap(f => f.rows.filter(r => !r.service && r.qty > 0).flatMap(r => [r.code && norm(r.code), 'n:' + norm(r.name)].filter(Boolean))) : null);
     ws.oldStock = { prevMo, keys: keys ? new Set(keys) : null, qty: 0, saved: 0 };
   }
-  const cats = {}, catCost = {}, svcs = {}, ratioAcc = {}, pending = [];
+  const cats = {}, catCost = {}, svcs = {}, ratioAcc = {}, pending = [], giftCost = {};
   for (const b of BRANDS) ws.byBrand[b.id] = { qty: 0, rev: 0, imp: 0 };
   for (const f of S.sales) {
     for (const r of f.rows) {
@@ -1143,6 +1143,8 @@ function compute() {
       const addCatCost = v => { if (catKey) { catCost[center] = catCost[center] || {}; catCost[center][catKey] = (catCost[center][catKey] || 0) + v; } };
       const brandTxt = r.brand || brandByCode.get(norm(r.code)) || brandByCode.get('n:' + norm(r.name)) || '';
       const bid = matchBrand(brandTxt) || matchBrand(r.name);
+      // supplier gifts are booked at cost in Edara but cost the company nothing
+      if (GIFT_ITEMS.test(norm(r.name))) { giftCost[center] = (giftCost[center] || 0) + (r.bookCost || 0); continue; }
       if (!bid) { addCatCost(r.bookCost || 0); continue; }
       const isWs = center === 'wholesale';
       let unit = costByCode.get(norm(r.code));
@@ -1186,7 +1188,7 @@ function compute() {
   const hasSales = S.sales.some(f => f.rows.length);
   const sumM = (cid, k) => Object.values(ws.matrix[cid] || {}).reduce((a, v) => a + v[k], 0);
 
-  for (const ce of CENTERS) { const x = c[ce.id]; Object.assign(x, { revMain: x.salesRev, revBrand: 0, cogsMain: x.cogsIS, cogsWs: 0 }); }
+  for (const ce of CENTERS) { const x = c[ce.id]; Object.assign(x, { revMain: x.salesRev, revBrand: 0, cogsMain: Math.max(0, x.cogsIS - (giftCost[ce.id] || 0)), cogsWs: 0, giftCost: giftCost[ce.id] || 0 }); }
   if (hasSales && mode === 'transfer') {
     for (const ce of CENTERS) {
       if (ce.id === 'wholesale' || !ws.matrix[ce.id]) continue;
@@ -1273,7 +1275,7 @@ function compute() {
       x.netBeforeMgr = x.net; x.net -= x.mgrComm;
     }
   }
-  R = { c, geo, ws, cats, catCost, svcs, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
+  R = { c, geo, ws, cats, catCost, svcs, giftCost, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   if (S.archive && !S.is) applyArchive(R, S.archive);
   applyTax(R);
@@ -1328,7 +1330,7 @@ function applyArchive(R, A) {
     }
     for (const [acc, v] of a?.op || []) {
       if (has(acc, 'تكلفه بضاعه الجمله')) { if (!withSales) x.cogsWs += v; }   // with the sales report it is recomputed at the list prices (below)
-      else if (has(acc, 'تكلفه البضاعه المباعه')) { if (!fromSales) x.cogsMain += v; }
+      else if (has(acc, 'تكلفه البضاعه المباعه')) { if (!fromSales) x.cogsMain += v - (R.giftCost?.[ce.id] || 0); }
       else if (v) { x.expenses += v; x.lines.push({ account: acc, cat: 'expense', amount: v }); }
     }
     if (withSales && ce.id !== 'wholesale') x.cogsWs = R.salesCalc[ce.id].cogsWs;
@@ -1872,6 +1874,8 @@ function svcSplit(cid, total) {
 // everything else in the center's expenses is fixed for the month.
 const VARIABLE_EXP = /تحصيل|تابي|تمارا|مدي|مدى|عموله|عمولات|خصم مسموح|الخصم المسموح|توصيل|شحن|تغليف|محروقات|صيانه سيارات|صيانه السيارات|طيار|مصاريف مبيعات|مصروف المبيعات|مصاريف المبيعات|هدايا|منتهيه الصلاحيه/;
 const ADS_EXP = /دعاي|اعلان/;
+// supplier gifts sold in the stores: Edara books them at cost, the company paid nothing (cost = 0)
+const GIFT_ITEMS = /مكاف.*فلاين\s*جو/;
 // advertising platforms, from the Edara sub-center a line was booked on
 const AD_PLATFORMS = [['google', 'جوجل', /جوجل|google/], ['meta', 'ميتا', /ميتا|meta|فيس|انستا/], ['snap', 'سناب', /سناب|snap/],
   ['tiktok', 'تيك توك', /تيك|tiktok/], ['whatsapp', 'واتساب', /واتس|whatsapp/], ['social', 'رواتب سوشيال', /سوشيال|social/]];
