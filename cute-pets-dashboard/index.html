@@ -1046,6 +1046,12 @@ function compute() {
     for (const f of fixedList()) for (const [cid, v] of Object.entries(f.by || {})) if (v && c[cid]) {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
     }
+    // Salla's collection fee not yet booked: estimated from the store's sales until Edara records it
+    for (const [cid, rate] of Object.entries(SALLA_ACCRUAL[curMonthKey()] || {})) {
+      const x = c[cid]; if (!x || x.lines.some(l => SALLA_FEE.test(norm(l.account)))) continue;
+      const a = Math.max(0, x.salesRev) * rate; if (!a) continue;
+      x.expenses += a; x.lines.push({ account: 'تحصيل منصة سلة', cat: 'expense', amount: a, estimate: true });
+    }
   }
   if (empCosts) for (const [unit, v] of Object.entries(empCosts)) {
     const t = norm(unit);
@@ -1704,7 +1710,8 @@ function renderStatement() {
   if (isWs) renderWholesale();
 
   const rev = x.revenue, exp = x.totalExp;
-  const row = (label, v, cls = 'indent', withPct = 'both') => `<tr class="${cls}"><td>${esc(itemLabel(label))}</td><td class="n">${signed(v)}</td>` +
+  const EST = new Set((x.lines || []).filter(l => l.estimate).map(l => l.account));
+  const row = (label, v, cls = 'indent', withPct = 'both') => `<tr class="${cls}"><td>${esc(itemLabel(label))}${EST.has(label) ? ' <span class="badge">تقديري لحين التسجيل</span>' : ''}</td><td class="n">${signed(v)}</td>` +
     (withPct === 'rev' ? `<td></td><td class="n num">${pct(v, rev)}</td>` : withPct === 'both' ? `<td class="n num">${pct(v, exp)}</td><td class="n num">${pct(v, rev)}</td>` : '<td></td><td></td>') + '</tr>';
   const lines = cat => {
     const agg = {};
@@ -1876,6 +1883,10 @@ function svcSplit(cid, total) {
 // everything else in the center's expenses is fixed for the month.
 const VARIABLE_EXP = /تحصيل|تابي|تمارا|مدي|مدى|عموله|عمولات|خصم مسموح|الخصم المسموح|توصيل|شحن|تغليف|محروقات|صيانه سيارات|صيانه السيارات|طيار|مصاريف مبيعات|مصروف المبيعات|مصاريف المبيعات|هدايا|منتهيه الصلاحيه/;
 const ADS_EXP = /دعاي|اعلان/;
+// Salla's collection fee for a month whose statement does not have it yet, as a share of the store's sales
+// (the store's own rate in Jul–Aug 2026); dropped as soon as the statement carries the fee
+const SALLA_FEE = /تحصيل.*سل[هة]/;
+const SALLA_ACCRUAL = { '2026-09': { cpstore: 0.01345, hamtaro: 0.01407, wagy: 0.0144 } };
 // packaging bought near a month's end: only the days used that month are its cost, the rest moves to the next month
 // (used = days used / 30, the batch covering about a month)
 const PACK_PREPAID = [{ month: '2026-09', amount: 3552, used: 3 / 30, note: 'مواد تغليف صُرفت 27/9' }];
