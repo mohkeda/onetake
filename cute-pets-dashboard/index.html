@@ -1088,7 +1088,7 @@ function compute() {
   const salesDC = DC.reduce((s, ce) => s + Math.max(0, c[ce.id].salesRev), 0);
   const fuelIS = CENTERS.reduce((s, ce) => s + c[ce.id].fuelOwn, 0);
   const vehTotal = CENTERS.reduce((s, ce) => s + c[ce.id].vehOwn, 0);   // vehicle maintenance follows fuel
-  const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0);
+  const packIS = CENTERS.reduce((s, ce) => s + c[ce.id].packOwn, 0) + packCarry(curMonthKey());
   const fuelTotal = set.fuelManual !== '' && set.fuelManual != null ? +set.fuelManual : fuelActual() ?? fuelIS;
   const packTotal = set.packManual !== '' && set.packManual != null ? +set.packManual : packIS;
   for (const ce of CENTERS) {
@@ -1622,6 +1622,8 @@ function renderDelivery() {
   const unk = Object.entries(r.unknownStores);
   if (unk.length) t += `<p class="note">طلبات لم يُتعرف على متجرها (لم تُحتسب): ${unk.map(([k, v]) => `${esc(k)} (<span class="num">${v}</span>)`).join('، ')}</p>`;
   t += `<p class="note">تكلفة المحروقات للطلب <b class="num">${fmt(r.fuelPerOrder, 2)}</b> · تكلفة التغليف للطلب <b class="num">${fmt(r.packPerOrder, 2)}</b>${r.cancelled ? ` · استُبعد <span class="num">${fmt(r.cancelled)}</span> طلب ملغي` : ''}</p>`;
+  const pc = packCarry($('#month').value), pp = PACK_PREPAID.find(p => p.month === $('#month').value || nextMonth(p.month) === $('#month').value);
+  if (pc) t += `<p class="note">مواد التغليف: ${pc < 0 ? `من ${esc(pp.note)} بمبلغ <b class="num">${money(pp.amount)}</b> يُحمَّل على هذا الشهر <b class="num">${money(pp.amount * pp.used)}</b> (٣ أيام) ويُرحَّل <b class="num">${money(-pc)}</b> للشهر القادم` : `أُضيف <b class="num">${money(pc)}</b> مرحّل من ${esc(pp.note)}`}</p>`;
   $('#delTable').innerHTML = t;
 }
 
@@ -1874,6 +1876,11 @@ function svcSplit(cid, total) {
 // everything else in the center's expenses is fixed for the month.
 const VARIABLE_EXP = /تحصيل|تابي|تمارا|مدي|مدى|عموله|عمولات|خصم مسموح|الخصم المسموح|توصيل|شحن|تغليف|محروقات|صيانه سيارات|صيانه السيارات|طيار|مصاريف مبيعات|مصروف المبيعات|مصاريف المبيعات|هدايا|منتهيه الصلاحيه/;
 const ADS_EXP = /دعاي|اعلان/;
+// packaging bought near a month's end: only the days used that month are its cost, the rest moves to the next month
+// (used = days used / 30, the batch covering about a month)
+const PACK_PREPAID = [{ month: '2026-09', amount: 3552, used: 3 / 30, note: 'مواد تغليف صُرفت 27/9' }];
+const nextMonth = m => { const [y, mo] = m.split('-').map(Number); return mo === 12 ? `${y + 1}-01` : `${y}-${String(mo + 1).padStart(2, '0')}`; };
+const packCarry = mo => PACK_PREPAID.reduce((t, p) => t + (p.month === mo ? -p.amount * (1 - p.used) : nextMonth(p.month) === mo ? p.amount * (1 - p.used) : 0), 0);
 // supplier gifts sold in the stores: Edara books them at cost, the company paid nothing (cost = 0)
 const GIFT_ITEMS = /مكاف.*فلاين\s*جو/;
 // advertising platforms, from the Edara sub-center a line was booked on
