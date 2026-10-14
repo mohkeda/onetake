@@ -1119,6 +1119,14 @@ function compute() {
       x.svcDiff = x.delInIS + x.delOutIS - x.delIn - x.delOut - x.cod; x.otherRev += x.svcDiff + x.cod;
     }
   }
+  // shipping companies' invoices not yet booked: the store's cost is estimated from its outside-Riyadh shipping revenue,
+  // and what Edara already booked is topped up to that estimate (removed from DELIVERY_ACCRUAL at the month's close)
+  for (const [cid, rate] of Object.entries(DELIVERY_ACCRUAL[curMonthKey()] || {})) {
+    const x = c[cid]; if (!x) continue;
+    const booked = x.lines.filter(l => l.cat === 'expense' && /^توصيل المتجر$/.test(norm(l.account).trim())).reduce((t, l) => t + l.amount, 0);
+    const a = Math.max(0, x.delOut * rate - booked); if (!a) continue;
+    x.expenses += a; x.lines.push({ account: 'توصيل المتجر غير المسجل', cat: 'expense', amount: a, estimate: true });
+  }
 
   // Wholesale brands.
   // Edara's sales reports carry the IMPORT cost. The fixed wholesale price list is what a store pays
@@ -1894,6 +1902,9 @@ const PHONE_SPLIT = { exhibit: 80 + 575, cpstore: 80 + 320 / 3, hamtaro: 80 + 32
 // (the store's own rate in Jul–Aug 2026); dropped as soon as the statement carries the fee
 const SALLA_FEE = /تحصيل.*سل[هة]/;
 const SALLA_ACCRUAL = { '2026-09': { cpstore: 0.01345, hamtaro: 0.01407, wagy: 0.0144 } };
+// store delivery (shipping companies) for a month whose invoices are not booked yet: cost = outside-Riyadh shipping revenue × the
+// store's own Jul–Aug 2026 ratio of delivery cost to shipping revenue
+const DELIVERY_ACCRUAL = { '2026-09': { cpstore: 1.02, hamtaro: 0.90, wagy: 1.06 } };
 // packaging bought near a month's end: only the days used that month are its cost, the rest moves to the next month
 // (used = days used / 30, the batch covering about a month)
 const PACK_PREPAID = [{ month: '2026-09', amount: 3552, used: 3 / 30, note: 'مواد تغليف صُرفت 27/9' }];
