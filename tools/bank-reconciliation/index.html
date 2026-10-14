@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<!--APP-START-->
+<title>مطابقة الحساب البنكي</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@600;700&display=swap">
+<style>
+/* Layout: one working column — upload & settings, then KPI strip, then tabbed results ledger. */
+:root{
+  --ink:#10302e;        /* headings, header band */
+  --bg:#f3f6f5;         /* page ground */
+  --surface:#ffffff;    /* panels */
+  --sunk:#eaf0ee;       /* inputs, table head tint */
+  --line:#d3dedb;
+  --fg:#1b2a28;
+  --muted:#5d716d;
+  --accent:#17766a;     /* teal: actions, matched */
+  --accent-ink:#ffffff;
+  --brass:#a77b2a;      /* secondary highlight */
+  --good:#1f7a3f; --good-bg:#e3f3e8;
+  --warn:#9a6400; --warn-bg:#fdf3dc;
+  --bad:#b3261e;  --bad-bg:#fbe6e4;
+  --info:#2b5d9a; --info-bg:#e5eef9;
+  --band1:#123a37; --band2:#1d6f66;
+  --f-display:"Noto Kufi Arabic","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --f-body:"IBM Plex Sans Arabic","Segoe UI",Tahoma,Arial,sans-serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ink:#d8ebe7; --bg:#0d1716; --surface:#13201f; --sunk:#1a2a28; --line:#2a3d3a; --fg:#e2ecea; --muted:#93aaa5;
+  --accent:#3fb3a2; --accent-ink:#06201c; --brass:#d6ab5c;
+  --good:#6fd394; --good-bg:#16301f; --warn:#f0c062; --warn-bg:#33270f; --bad:#ff8a80; --bad-bg:#3a1714; --info:#8fb8f0; --info-bg:#172840;
+  --band1:#0f2b29; --band2:#175a53; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ink:#d8ebe7; --bg:#0d1716; --surface:#13201f; --sunk:#1a2a28; --line:#2a3d3a; --fg:#e2ecea; --muted:#93aaa5;
+  --accent:#3fb3a2; --accent-ink:#06201c; --brass:#d6ab5c;
+  --good:#6fd394; --good-bg:#16301f; --warn:#f0c062; --warn-bg:#33270f; --bad:#ff8a80; --bad-bg:#3a1714; --info:#8fb8f0; --info-bg:#172840;
+  --band1:#0f2b29; --band2:#175a53; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.6;margin:0}
+.app{direction:rtl}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate;white-space:nowrap}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header band */
+.band{background:linear-gradient(100deg,var(--band1),var(--band2));color:#fff}
+.band .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:18px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:14px;min-width:0}
+.mark{width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,.12);display:grid;place-items:center;flex:none}
+.brand h1{font-family:var(--f-display);font-size:1.25rem;margin:0;line-height:1.4;text-wrap:balance}
+.brand p{margin:2px 0 0;font-size:.8rem;opacity:.8}
+.owner{font-size:.8rem;text-align:left;opacity:.9;border-inline-start:1px solid rgba(255,255,255,.25);padding-inline-start:14px}
+.owner b{display:block;font-family:var(--f-display);font-size:.95rem}
+
+main{padding-block:20px 40px;display:grid;gap:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}
+.panel h2{font-family:var(--f-display);font-size:1rem;margin:0 0 14px;color:var(--ink);display:flex;align-items:center;gap:8px}
+
+/* drop zones */
+.drops{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.drop{border:2px dashed var(--line);border-radius:var(--r);padding:18px;text-align:center;cursor:pointer;background:var(--sunk);transition:border-color .15s,background .15s;min-width:0}
+.drop:hover,.drop.over{border-color:var(--accent)}
+.drop.has{border-style:solid;border-color:var(--accent)}
+.drop .ic{color:var(--accent)}
+.drop h3{margin:6px 0 0;font-size:.98rem;font-family:var(--f-display);color:var(--ink)}
+.drop small{color:var(--muted);display:block}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:.78rem;max-width:100%}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{border:0;background:none;cursor:pointer;color:var(--muted);padding:0 2px;font-size:1rem;line-height:1}
+.chip.err{border-color:var(--bad);color:var(--bad)}
+
+.notes{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.note{border-radius:var(--r);padding:10px 14px;font-size:.8rem;line-height:1.8}
+.note.i{background:var(--info-bg);color:var(--fg)}
+.note.w{background:var(--warn-bg);color:var(--fg)}
+
+/* mapping */
+.maps{margin-top:14px;display:grid;gap:8px}
+.maprow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:.8rem;background:var(--sunk);border-radius:8px;padding:8px 10px}
+.maprow b{min-width:0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maprow label{display:inline-flex;align-items:center;gap:4px;color:var(--muted)}
+.maprow select{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 4px;max-width:150px;font-size:.78rem}
+.tag{font-size:.72rem;padding:1px 8px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+
+/* settings */
+.opts{display:grid;gap:0;margin-top:16px}
+.opt{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;padding-block:12px;border-top:1px solid var(--line);font-size:.86rem}
+.opt label{display:inline-flex;align-items:center;gap:8px}
+.opt input[type=number],.opt input[type=text]{width:110px;background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:5px 8px;text-align:center}
+.opt input[type=checkbox]{width:17px;height:17px;accent-color:var(--accent)}
+
+.run{margin-top:6px;width:100%;border:0;border-radius:var(--r);padding:13px;background:linear-gradient(100deg,var(--band1),var(--band2));color:#fff;font-weight:700;font-size:1rem;cursor:pointer;font-family:var(--f-display)}
+.run:disabled{opacity:.5;cursor:not-allowed}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.84rem}
+.btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.alert{margin-top:12px;border-radius:var(--r);padding:10px 14px;font-weight:600;font-size:.88rem;border:1px solid}
+.alert.w{background:var(--warn-bg);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+.alert.g{background:var(--good-bg);color:var(--good);border-color:color-mix(in srgb,var(--good) 30%,transparent)}
+.alert.b{background:var(--bad-bg);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 30%,transparent)}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:12px;padding:12px;text-align:center;min-width:0}
+.kpi .v{font-size:1.3rem;font-weight:700;color:var(--ink)}
+.kpi .l{font-size:.76rem;color:var(--muted)}
+.kpi.bad{border-top-color:var(--bad)} .kpi.bad .v{color:var(--bad)}
+.kpi.ok{border-top-color:var(--good)} .kpi.ok .v{color:var(--good)}
+.kpi.brass{border-top-color:var(--brass)}
+
+/* tabs & table */
+.res{padding:0;overflow:hidden}
+.tabs{display:flex;gap:4px;padding:10px 12px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{border:1px solid transparent;border-bottom:0;background:none;padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer;font-size:.85rem;white-space:nowrap;color:var(--muted)}
+.tab[aria-selected=true]{background:var(--surface);border-color:var(--line);color:var(--ink);font-weight:700;margin-bottom:-1px}
+.tab .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-inline-end:6px;vertical-align:middle}
+.tblwrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.83rem;min-width:820px}
+th{background:var(--band1);color:#fff;font-weight:600;text-align:right;padding:8px 10px;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody.grp{border-top:2px solid var(--accent)}
+tbody.grp td{background:color-mix(in srgb,var(--accent) 4%,transparent)}
+tr.near td{background:var(--warn-bg)}
+td.amt{font-weight:600}
+.neg{color:var(--bad)} .pos{color:var(--good)}
+tfoot td{background:var(--band1);color:#fff;font-weight:700;border:0}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:.74rem;padding:1px 9px;border-radius:999px;white-space:nowrap;font-weight:600}
+.pill.g{background:var(--good-bg);color:var(--good)}
+.pill.w{background:var(--warn-bg);color:var(--warn)}
+.pill.i{background:var(--info-bg);color:var(--info)}
+.pill.m{background:var(--sunk);color:var(--muted)}
+.x{border:0;background:none;cursor:pointer;color:var(--muted);font-size:.9rem;padding:0 4px}
+.x:hover{color:var(--bad)}
+.foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border-top:1px solid var(--line);font-size:.84rem}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.selbar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:10px 14px;background:var(--info-bg);font-size:.82rem}
+
+/* memo */
+.memo{padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.memo h3{font-family:var(--f-display);font-size:.95rem;margin:0 0 8px;color:var(--ink)}
+.memo table{min-width:0;font-size:.82rem}
+.memo td{padding:5px 8px}
+.memo .sub td{color:var(--muted);font-size:.78rem;padding-inline-start:22px}
+.memo .tot td{font-weight:700;border-top:2px solid var(--ink);border-bottom:0}
+.memo .res2{grid-column:1/-1}
+.sample-tag{font-size:.75rem;color:var(--brass);font-weight:600}
+
+.credit{text-align:center;color:var(--muted);font-size:.78rem}
+.credit b{color:var(--ink)}
+
+@media (max-width:760px){
+  .drops,.notes,.memo{grid-template-columns:1fr}
+  .kpis{grid-template-columns:1fr 1fr}
+  .owner{border:0;padding:0;text-align:right}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app" lang="ar" dir="rtl">
+<header class="band">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 20h18"/></svg>
+      </div>
+      <div>
+        <h1>مطابقة كشف الحساب البنكي مع دفاتر الشركة</h1>
+        <p>Excel · CSV · PDF — عدة ملفات لكل طرف — المعالجة تتم داخل متصفحك ولا تُرفع بياناتك لأي خادم</p>
+      </div>
+    </div>
+    <div class="owner" id="owner" hidden></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel">
+    <h2>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h6l2 2h10v10H3z"/></svg>
+      رفع الملفات
+      <span class="sample-tag" id="sampleTag" hidden>· بيانات نموذجية للتجربة</span>
+    </h2>
+    <div class="drops">
+      <div class="drop" id="dropBank" tabindex="0" role="button" aria-label="رفع كشف حساب البنك">
+        <div class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg></div>
+        <h3>كشف حساب البنك</h3>
+        <small>Excel · CSV · PDF — اضغط أو اسحب الملفات هنا</small>
+        <div class="chips" id="chipsBank"></div>
+      </div>
+      <div class="drop" id="dropBooks" tabindex="0" role="button" aria-label="رفع حساب البنك في دفاتر الشركة">
+        <div class="ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8h6"/></svg></div>
+        <h3>حساب البنك في دفاتر الشركة</h3>
+        <small>Excel · CSV · PDF — اضغط أو اسحب الملفات هنا</small>
+        <div class="chips" id="chipsBooks"></div>
+      </div>
+    </div>
+    <input type="file" id="fileBank" multiple accept=".xlsx,.xls,.xlsm,.csv,.txt,.pdf" hidden>
+    <input type="file" id="fileBooks" multiple accept=".xlsx,.xls,.xlsm,.csv,.txt,.pdf" hidden>
+
+    <div class="notes">
+      <div class="note i"><b>Excel / CSV:</b> تُكتشف الأعمدة تلقائياً (تاريخ · بيان · مدين · دائن، أو عمود مبلغ واحد +/−) وتُقرأ جميع الأوراق التي تحتوي على عناوين أعمدة. يمكنك تعديل ربط الأعمدة من القوائم أدناه. <b>PDF:</b> يُقرأ النص من ملفات PDF النصية (وليس الممسوحة ضوئياً) ويُستنتج اتجاه الحركة من عمود الرصيد.</div>
+      <div class="note w"><b>اتجاه القيد:</b> الإيداع يظهر <b>دائناً</b> في كشف البنك و<b>مديناً</b> في دفاتر الشركة، لذا تعكس الأداة إشارة الدفاتر تلقائياً (يمكن إلغاء ذلك من الخيارات).<br><b>المطابقة المجمّعة:</b> إذا قُيّدت عدة حركات بنكية (تحويلات، رسوم…) كقيد واحد في الدفاتر، تبحث الأداة عن مجموعة الحركات التي يساوي مجموعها القيد، والعكس.</div>
+    </div>
+
+    <div class="maps" id="maps"></div>
+
+    <div class="opts">
+      <div class="opt">
+        <label for="tol">هامش التسامح (ر.س) <input type="number" id="tol" value="0.01" step="0.01" min="0"></label>
+        <label for="days">فرق الأيام المسموح <input type="number" id="days" value="5" step="1" min="0"></label>
+        <label><input type="checkbox" id="rev" checked> عكس إشارة الدفاتر (مدين الدفاتر = دائن البنك)</label>
+      </div>
+      <div class="opt">
+        <label><input type="checkbox" id="grp" checked> مطابقة مجمّعة (عدة حركات بنكية ↔ قيد واحد بالدفاتر، والعكس)</label>
+        <label for="maxg">أقصى عدد حركات في المجموعة <input type="number" id="maxg" value="10" step="1" min="2" max="15"></label>
+      </div>
+      <div class="opt">
+        <label for="balBank">رصيد البنك آخر الفترة <input type="text" id="balBank" inputmode="decimal" placeholder="اختياري"></label>
+        <label for="balBooks">رصيد الدفاتر آخر الفترة <input type="text" id="balBooks" inputmode="decimal" placeholder="اختياري"></label>
+      </div>
+    </div>
+
+    <button class="run" id="runBtn">⚡ تشغيل المطابقة</button>
+    <div class="btnrow">
+      <button class="btn" id="sampleBtn">تحميل بيانات نموذجية</button>
+      <button class="btn" id="clearBtn">مسح الكل</button>
+    </div>
+    <div id="alert"></div>
+  </section>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="panel res" id="results">
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div id="tabBody"></div>
+  </section>
+
+  <footer class="credit" id="credit"></footer>
+</main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+/* ===== Branding: fill these to show your name / contact in the header & footer (leave empty to hide) ===== */
+const BRAND = { name: "", title: "", phone: "", whatsapp: "", currency: "ر.س" };
+
+(function(){
+"use strict";
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ---------- state ---------- */
+const S = {
+  files: { bank: [], books: [] },   // {name, kind:'table'|'pdf'|'error', sheets:[{name, rows, header, map}], pdfRows, error}
+  items: { bank: [], books: [] },   // {id, side, day, desc, c (cents), src}
+  matches: [],                      // {bank:[id], books:[id], type, days, diff}
+  sel: { bank: new Set(), books: new Set() },
+  tab: "matched", ran: false, sample: false
+};
+
+/* ---------- text & number helpers ---------- */
+function normDigits(s){
+  return String(s)
+    .replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x0660)
+    .replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x06F0)
+    .replace(/٫/g, ".").replace(/[٬،]/g, ",")
+    .replace(/[\u200E\u200F\u202A-\u202E ]/g, " ");
+}
+function normText(s){
+  return normDigits(s).toLowerCase().replace(/[ً-ْـ]/g, "")
+    .replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, " ").trim();
+}
+function parseNum(v){
+  if (v == null || v === "") return NaN;
+  if (typeof v === "number") return v;
+  let s = normDigits(v).trim();
+  if (!/\d/.test(s)) return NaN;
+  let neg = /^\(.*\)$/.test(s) || /^-/.test(s.replace(/^[^\d-]+/, "")) || /-\s*$/.test(s);
+  s = s.replace(/[^\d.,]/g, "");
+  if (s.includes(".") && s.includes(",")) {
+    if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+    else s = s.replace(/,/g, "");
+  } else if (/^\d+,\d{2}$/.test(s)) s = s.replace(",", ".");
+  else s = s.replace(/,/g, "");
+  const n = parseFloat(s);
+  return isNaN(n) ? NaN : (neg ? -n : n);
+}
+const cents = n => Math.round(n * 100);
+function fmt(c, paren = true){
+  const a = Math.abs(c) / 100;
+  const s = a.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return c < 0 ? (paren ? "(" + s + ")" : "-" + s) : s;
+}
+
+/* ---------- dates (stored as day numbers since 1970-01-01) ---------- */
+const dayNum = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / 864e5);
+function validDay(y, m, d){
+  if (y < 100) y += 2000;
+  if (y < 1990 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCMonth() !== m - 1) return null;
+  return dayNum(y, m, d);
+}
+const MONTHS = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+  "يناير":1,"فبراير":2,"مارس":3,"ابريل":4,"مايو":5,"يونيو":6,"يوليو":7,"اغسطس":8,"سبتمبر":9,"اكتوبر":10,"نوفمبر":11,"ديسمبر":12 };
+function monthOf(w){ w = normText(w); return MONTHS[w] || MONTHS[w.slice(0, 3)] || null; }
+// Finds a date anywhere in a string. Returns {day, text} or null.
+function findDate(str){
+  const s = normDigits(str);
+  let m = s.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if (m) { const d = validDay(+m[1], +m[2], +m[3]); if (d != null) return { day: d, text: m[0] }; }
+  m = s.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4}|\d{2})(?!\d)/);
+  if (m) {
+    let a = +m[1], b = +m[2], dd = a, mm = b;
+    if (a <= 12 && b > 12) { dd = b; mm = a; }   // mm/dd/yyyy
+    const d = validDay(+m[3], mm, dd); if (d != null) return { day: d, text: m[0] };
+  }
+  m = s.match(/(\d{1,2})[\s\-\/]*([A-Za-z\u0600-ۿ]{3,})[\s\-\/,]*(\d{4}|\d{2})(?!\d)/);
+  if (m && monthOf(m[2])) { const d = validDay(+m[3], monthOf(m[2]), +m[1]); if (d != null) return { day: d, text: m[0] }; }
+  m = s.match(/([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})/);
+  if (m && monthOf(m[1])) { const d = validDay(+m[3], monthOf(m[1]), +m[2]); if (d != null) return { day: d, text: m[0] }; }
+  return null;
+}
+function parseDate(v){
+  if (v == null || v === "") return null;
+  if (v instanceof Date) {
+    if (isNaN(v)) return null;
+    const d = new Date(v.getTime() + 12 * 3600e3);  // absorbs SheetJS sub-minute drift
+    return validDay(d.getFullYear(), d.getMonth() + 1, d.getDate());
+  }
+  if (typeof v === "number") return (v > 30000 && v < 80000) ? Math.round(v) - 25569 : null;
+  const f = findDate(String(v));
+  return f ? f.day : null;
+}
+function fmtDay(n){
+  if (n == null) return "";
+  const d = new Date(n * 864e5);
+  return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+}
+
+/* ---------- column detection ---------- */
+const ROLE_RX = [
+  ["skip",   /رصيد|balance/],
+  ["date",   /تاريخ|date/],
+  ["debit",  /مدين|سحب|مسحوب|خصم|منصرف|debit|withdraw|\bdr\b|payments?\b|money out/],
+  ["credit", /دائن|ايداع|وارد|مقبوض|credit|deposit|\bcr\b|receipts?\b|money in/],
+  ["amount", /مبلغ|قيمه|amount|value|المبلغ/],
+  ["desc",   /بيان|وصف|تفاصيل|شرح|ملاحظ|البيان|description|narration|details|particular|memo|remark|transaction|البند/],
+  ["ref",    /مرجع|رقم|ref|cheque|check|شيك|سند|voucher|doc/]
+];
+const ROLES = ["date", "desc", "debit", "credit", "amount", "ref"];
+const ROLE_AR = { date: "التاريخ", desc: "البيان", debit: "مدين", credit: "دائن", amount: "المبلغ", ref: "المرجع" };
+
+function mapHeader(row){
+  const map = { date: -1, desc: -1, debit: -1, credit: -1, amount: -1, ref: -1 };
+  (row || []).forEach((cell, i) => {
+    if (cell == null || cell === "" || typeof cell === "number") return;
+    const t = normText(cell);
+    if (!t || t.length > 60) return;
+    for (const [role, rx] of ROLE_RX) {
+      if (rx.test(t)) { if (role !== "skip" && map[role] < 0) map[role] = i; break; }
+    }
+  });
+  return map;
+}
+function detectSheet(rows){
+  let best = null;
+  for (let r = 0; r < Math.min(rows.length, 40); r++) {
+    const map = mapHeader(rows[r]);
+    const ok = map.date >= 0 && (map.amount >= 0 || map.debit >= 0 || map.credit >= 0);
+    if (!ok) continue;
+    const score = ROLES.filter(k => map[k] >= 0).length;
+    if (!best || score > best.score) best = { header: r, map, score };
+  }
+  if (best) return { header: best.header, map: best.map };
+  return inferByContent(rows);
+}
+// No header row: guess columns from the cell contents.
+function inferByContent(rows){
+  const n = Math.min(rows.length, 300), width = Math.max(0, ...rows.slice(0, n).map(r => (r || []).length));
+  const st = Array.from({ length: width }, () => ({ date: 0, num: 0, text: 0, len: 0 }));
+  for (let r = 0; r < n; r++) (rows[r] || []).forEach((v, i) => {
+    if (v == null || v === "") return;
+    if (v instanceof Date || (typeof v === "string" && findDate(v) && normDigits(v).trim().length <= 24)) st[i].date++;
+    else if (typeof v === "number" || !isNaN(parseNum(v)) && /^[\s\d.,()\-+٠-٩]+$/.test(normDigits(v))) st[i].num++;
+    else { st[i].text++; st[i].len += String(v).length; }
+  });
+  const map = { date: -1, desc: -1, debit: -1, credit: -1, amount: -1, ref: -1 };
+  let dc = -1, dmax = 0;
+  st.forEach((s, i) => { if (s.date > dmax) { dmax = s.date; dc = i; } });
+  if (dc < 0 || dmax < 2) return null;
+  map.date = dc;
+  let tc = -1, tmax = 0;
+  st.forEach((s, i) => { if (i !== dc && s.len > tmax) { tmax = s.len; tc = i; } });
+  map.desc = tc;
+  const nums = st.map((s, i) => i).filter(i => i !== dc && st[i].num >= dmax * 0.3);
+  if (nums.length === 1) map.amount = nums[0];
+  else if (nums.length >= 2) { map.debit = nums[0]; map.credit = nums[1]; }
+  else return null;
+  return { header: -1, map };
+}
+
+/* ---------- file reading ---------- */
+async function readFile(file){
+  const name = file.name, ext = name.split(".").pop().toLowerCase();
+  const buf = await file.arrayBuffer();
+  if (ext === "pdf") {
+    if (!window.pdfjsLib) throw new Error("تعذّر تحميل قارئ PDF");
+    return { name, kind: "pdf", lines: await pdfLines(buf) };
+  }
+  if (!window.XLSX) throw new Error("تعذّر تحميل قارئ Excel");
+  let wb;
+  if (ext === "csv" || ext === "txt") {
+    let text = new TextDecoder("utf-8").decode(buf);
+    if (/\uFFFD/.test(text)) { try { text = new TextDecoder("windows-1256").decode(buf); } catch (e) {} }
+    const rows = parseCSV(text.replace(/^\uFEFF/, ""));   // own parser: SheetJS would read 01/09/2026 as January 9
+    if (!rows.length) throw new Error("الملف فارغ");
+    const det = detectSheet(rows);
+    return { name, kind: "table", sheets: [{ name: "CSV", rows, header: det ? det.header : 0, map: det ? det.map : { date: -1, desc: -1, debit: -1, credit: -1, amount: -1, ref: -1 }, found: !!det }] };
+  } else {
+    wb = XLSX.read(buf, { type: "array", cellDates: true });
+  }
+  const sheets = [];
+  wb.SheetNames.forEach(sn => {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: "" });
+    if (!rows.length) return;
+    const det = detectSheet(rows);
+    sheets.push({ name: sn, rows, header: det ? det.header : 0, map: det ? det.map : { date: -1, desc: -1, debit: -1, credit: -1, amount: -1, ref: -1 }, found: !!det });
+  });
+  if (!sheets.length) throw new Error("الملف فارغ");
+  // when some sheets were detected, keep only those
+  const good = sheets.filter(s => s.found);
+  return { name, kind: "table", sheets: good.length ? good : sheets };
+}
+
+function parseCSV(text){
+  const first = text.split(/\r?\n/).slice(0, 10).join("\n");
+  const delim = [",", ";", "\t", "|"].map(d => [d, first.split(d).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cell.trim()); cell = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell.trim()); cell = "";
+      if (row.some(c => c !== "")) rows.push(row);
+      row = [];
+    } else cell += ch;
+  }
+  row.push(cell.trim()); if (row.some(c => c !== "")) rows.push(row);
+  return rows;
+}
+
+async function pdfLines(buf){
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  const out = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(it => it.str && it.str.trim()).map(it => ({ s: it.str, x: it.transform[4], y: it.transform[5] }));
+    items.sort((a, b) => b.y - a.y);
+    const lines = [];
+    for (const it of items) {
+      const ln = lines.find(l => Math.abs(l.y - it.y) <= 3);
+      if (ln) ln.items.push(it); else lines.push({ y: it.y, items: [it] });
+    }
+    lines.sort((a, b) => b.y - a.y).forEach(l => {
+      const ar = l.items.filter(i => /[\u0600-ۿ]/.test(i.s)).length > l.items.length / 2;
+      l.items.sort((a, b) => ar ? b.x - a.x : a.x - b.x);
+      out.push(l.items.map(i => i.s).join("  "));
+    });
+  }
+  return out;
+}
+
+const RX_OPEN = /رصيد افتتاحي|رصيد سابق|رصيد اول|الرصيد السابق|رصيد منقول|opening balance|balance b\/?f|brought forward|previous balance|balance forward/;
+const RX_SKIP = /^(الاجمالي|اجمالي|المجموع|مجموع|total|totals|grand total|closing balance|الرصيد الختامي|رصيد ختامي|رصيد اخر)/;
+const RX_IN  = /ايداع|وارد|تحصيل|مقبوض|deposit|credit|\bcr\b|incoming|transfer in|refund|استرداد|ارباح|فوائد دائنه/;
+const RX_OUT = /سحب|شيك|رسوم|عموله|صادر|سداد|خصم|مدفوع|withdraw|debit|\bdr\b|fee|charge|payment|transfer out|pos|atm|purchase|شراء/;
+
+function pdfToItems(lines){
+  const amtRx = /\(?-?(?:\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+\.\d{1,2})\)?-?/g;
+  const recs = [];
+  let openBal = null;
+  for (const raw of lines) {
+    const line = normDigits(raw);
+    const t = normText(line);
+    const dm = findDate(line);
+    const rest = dm ? line.replace(dm.text, " ") : line;
+    const nums = (rest.match(amtRx) || []).map(parseNum).filter(n => !isNaN(n));
+    if (RX_OPEN.test(t)) { if (nums.length) openBal = cents(nums[nums.length - 1]); continue; }
+    if (!dm || !nums.length || RX_SKIP.test(t)) continue;
+    const desc = rest.replace(amtRx, " ").replace(/\s+/g, " ").trim();
+    recs.push({ day: dm.day, nums: nums.map(cents), desc, t });
+  }
+  if (recs.length > 1 && recs[0].day > recs[recs.length - 1].day) recs.reverse();   // newest-first statements
+  let prev = openBal;
+  const out = [];
+  for (const r of recs) {
+    let c = null;
+    if (r.nums.length >= 2) {
+      const bal = r.nums[r.nums.length - 1];
+      const mv = r.nums.slice(0, -1).filter(x => x !== 0);
+      if (prev != null) {
+        const delta = bal - prev;
+        if (mv.some(x => Math.abs(Math.abs(x) - Math.abs(delta)) <= 1)) c = delta;
+      }
+      if (c == null && mv.length) {
+        const a = Math.abs(mv[0]);
+        c = mv[0] < 0 ? mv[0] : RX_OUT.test(r.t) && !RX_IN.test(r.t) ? -a : RX_IN.test(r.t) ? a : (prev != null && bal < prev ? -a : a);
+      }
+      prev = bal;
+    } else {
+      const a = r.nums[0];
+      c = a < 0 ? a : (RX_OUT.test(r.t) && !RX_IN.test(r.t) ? -a : a);
+    }
+    if (c) out.push({ day: r.day, desc: r.desc, c });
+  }
+  return out;
+}
+
+/* ---------- building normalized items ---------- */
+function buildItems(side){
+  const rev = $("rev").checked, list = [];
+  S.files[side].forEach((f, fi) => {
+    if (f.kind === "pdf") {
+      pdfToItems(f.lines).forEach((r, i) => list.push({ id: side + ":" + fi + ":p:" + i, side, day: r.day, desc: r.desc, c: r.c, src: f.name }));
+      return;
+    }
+    if (f.kind === "rows") {   // sample data
+      f.rows.forEach((r, i) => {
+        let c = r.c; if (side === "books" && !rev) c = -c;
+        list.push({ id: side + ":" + fi + ":s:" + i, side, day: r.day, desc: r.desc, c, src: f.name });
+      });
+      return;
+    }
+    if (f.kind !== "table") return;
+    f.sheets.forEach((sh, si) => {
+      const m = sh.map;
+      if (m.date < 0 || (m.amount < 0 && m.debit < 0 && m.credit < 0)) return;
+      for (let r = sh.header + 1; r < sh.rows.length; r++) {
+        const row = sh.rows[r] || [];
+        const day = parseDate(row[m.date]);
+        if (day == null) continue;
+        let desc = m.desc >= 0 ? String(row[m.desc] ?? "").trim() : "";
+        if (m.ref >= 0 && row[m.ref] !== "" && row[m.ref] != null) desc = (desc ? desc + " — " : "") + String(row[m.ref]).trim();
+        const t = normText(desc);
+        if (RX_OPEN.test(t) || RX_SKIP.test(t)) continue;
+        let c = 0;
+        const d = m.debit >= 0 ? parseNum(row[m.debit]) : NaN, cr = m.credit >= 0 ? parseNum(row[m.credit]) : NaN;
+        if (!isNaN(d) || !isNaN(cr)) {
+          const dd = Math.abs(isNaN(d) ? 0 : d), cc = Math.abs(isNaN(cr) ? 0 : cr);
+          c = side === "bank" ? cents(cc - dd) : cents(dd - cc);   // books: debit increases the bank account
+        }
+        if (!c && m.amount >= 0) { const a = parseNum(row[m.amount]); if (!isNaN(a)) c = cents(a); }
+        if (side === "books" && !rev) c = -c;
+        if (!c) continue;
+        list.push({ id: side + ":" + fi + ":" + si + ":" + r, side, day, desc, c, src: f.name + (f.sheets.length > 1 ? " / " + sh.name : "") });
+      }
+    });
+  });
+  list.sort((a, b) => a.day - b.day || a.id.localeCompare(b.id));
+  return list;
+}
+
+/* ---------- matching ---------- */
+function runMatching(){
+  const tol = Math.max(0, cents(parseNum($("tol").value) || 0));
+  const win = Math.max(0, parseInt($("days").value, 10) || 0);
+  const maxG = Math.min(15, Math.max(2, parseInt($("maxg").value, 10) || 10));
+  const bank = buildItems("bank"), books = buildItems("books");
+  const byId = new Map([...bank, ...books].map(x => [x.id, x]));
+  // Two orders are tried; the one that explains more transactions wins.
+  // A: one-to-one first, then groups.  B: same-day one-to-one, groups, then one-to-one within the date window.
+  const manual = S.matches.filter(m => m.type === "manual");
+  const A = matchStrategy(bank, books, byId, manual, tol, win, maxG, false);
+  const B = $("grp").checked ? matchStrategy(bank, books, byId, manual, tol, win, maxG, true) : null;
+  const count = ms => ms.reduce((s, m) => s + m.bank.length + m.books.length, 0);
+  const matches = B && count(B) > count(A) ? B : A;
+
+  S.items = { bank, books };
+  S.byId = byId;
+  S.matches = matches;
+  S.sel.bank.clear(); S.sel.books.clear();
+  S.ran = true;
+}
+
+function matchStrategy(bank, books, byId, manual, tol, win, maxG, groupsFirst){
+  const used = new Set(), matches = [];
+  manual.forEach(m => {
+    if ([...m.bank, ...m.books].every(id => byId.has(id) && !used.has(id))) { [...m.bank, ...m.books].forEach(id => used.add(id)); matches.push(m); }
+  });
+  const free = arr => arr.filter(x => !used.has(x.id));
+  const pair = (b, k, type) => {
+    used.add(b.id); used.add(k.id);
+    matches.push({ bank: [b.id], books: [k.id], type, days: Math.abs(b.day - k.day), diff: b.c - k.c });
+  };
+  const sameDay = () => {
+    for (const b of free(bank)) {
+      const k = free(books).find(x => x.day === b.day && Math.abs(x.c - b.c) <= tol);
+      if (k) pair(b, k, "exact");
+    }
+  };
+  const windowed = () => {
+    for (const b of free(bank)) {
+      let best = null;
+      for (const k of free(books)) {
+        const dd = Math.abs(k.day - b.day), da = Math.abs(k.c - b.c);
+        if (dd > win || da > tol) continue;
+        if (!best || dd < best.dd || (dd === best.dd && da < best.da)) best = { k, dd, da };
+      }
+      if (best) pair(b, best.k, best.dd ? "date" : "exact");
+    }
+  };
+  const groupPass = (targets, pool, targetSide) => {
+    const ts = free(targets).sort((a, b) => Math.abs(b.c) - Math.abs(a.c));
+    for (const t of ts) {
+      if (used.has(t.id)) continue;
+      const cands = free(pool)
+        .filter(x => Math.sign(x.c) === Math.sign(t.c) && Math.abs(x.c) <= Math.abs(t.c) + tol && Math.abs(x.day - t.day) <= win)
+        .sort((a, b) => Math.abs(a.day - t.day) - Math.abs(b.day - t.day)).slice(0, 26);
+      const found = subsetSum(Math.abs(t.c), cands.map(x => Math.abs(x.c)), tol, maxG);
+      if (!found) continue;
+      const grp = found.map(i => cands[i]);
+      grp.forEach(x => used.add(x.id)); used.add(t.id);
+      const sum = grp.reduce((s, x) => s + x.c, 0);
+      const days = Math.max(...grp.map(x => Math.abs(x.day - t.day)));
+      const ids = grp.sort((a, b) => a.day - b.day).map(x => x.id);
+      matches.push(targetSide === "books"
+        ? { bank: ids, books: [t.id], type: "group", days, diff: sum - t.c }
+        : { bank: [t.id], books: ids, type: "group", days, diff: t.c - sum });
+    }
+  };
+  const groups = () => { if ($("grp").checked) { groupPass(books, bank, "books"); groupPass(bank, books, "bank"); } };
+
+  sameDay();
+  if (groupsFirst) { groups(); windowed(); }
+  else { windowed(); groups(); }
+  return matches;
+}
+
+// Smallest subset (2..maxK items) of positive values summing to target ±tol. Returns indexes or null.
+function subsetSum(target, vals, tol, maxK){
+  const idx = vals.map((v, i) => i).sort((a, b) => vals[b] - vals[a]);
+  const sv = idx.map(i => vals[i]);
+  const suffix = sv.map((_, i) => sv.slice(i).reduce((s, v) => s + v, 0));
+  let budget = 400000;
+  for (let k = 2; k <= Math.min(maxK, sv.length); k++) {
+    const pick = [];
+    const dfs = (start, rem) => {
+      if (--budget < 0) return false;
+      if (pick.length === k) return Math.abs(rem) <= tol;
+      for (let i = start; i <= sv.length - (k - pick.length); i++) {
+        if (sv[i] > rem + tol) continue;
+        if (suffix[i] < rem - tol) return false;
+        pick.push(i);
+        if (dfs(i + 1, rem - sv[i])) return true;
+        pick.pop();
+      }
+      return false;
+    };
+    if (dfs(0, target)) return pick.map(i => idx[i]);
+    if (budget < 0) break;
+  }
+  return null;
+}
+
+/* ---------- derived figures ---------- */
+function derived(){
+  const matchedIds = new Set(S.matches.flatMap(m => [...m.bank, ...m.books]));
+  const bankOnly = S.items.bank.filter(x => !matchedIds.has(x.id));
+  const booksOnly = S.items.books.filter(x => !matchedIds.has(x.id));
+  const sum = a => a.reduce((s, x) => s + x.c, 0);
+  const bankMatched = S.items.bank.length - bankOnly.length;
+  return { bankOnly, booksOnly, bankNet: sum(S.items.bank), booksNet: sum(S.items.books), bankMatched,
+    matchDiff: S.matches.reduce((s, m) => s + m.diff, 0) };
+}
+
+/* ---------- rendering ---------- */
+function amtCell(c){ return `<td class="amt num ${c < 0 ? "neg" : "pos"}">${c == null ? "" : fmt(c)}</td>`; }
+function statusPill(m){
+  const dd = m.days ? ` · فرق ${m.days} ${m.days === 1 ? "يوم" : m.days <= 10 ? "أيام" : "يوماً"}` : "";
+  const da = m.diff ? ` · فرق مبلغ ${fmt(m.diff, false)}` : "";
+  if (m.type === "manual") return `<span class="pill m">✋ يدوية${da}</span>`;
+  if (m.type === "group") return `<span class="pill i">🔗 مجمّعة ${m.bank.length} ↔ ${m.books.length}${dd}</span>`;
+  if (m.days || m.diff) return `<span class="pill w">📅 ${(dd + da).replace(/^ · /, "")}</span>`;
+  return `<span class="pill g">✓ مطابقة تامة</span>`;
+}
+
+function renderFiles(){
+  ["bank", "books"].forEach(side => {
+    const key = side === "bank" ? "Bank" : "Books";
+    const files = S.files[side];
+    $("drop" + key).classList.toggle("has", files.length > 0);
+    $("chips" + key).innerHTML = files.map((f, i) =>
+      `<span class="chip ${f.kind === "error" ? "err" : ""}" title="${esc(f.error || f.name)}"><span>${f.kind === "pdf" ? "📄" : f.kind === "error" ? "⚠️" : "📊"} ${esc(f.name)}</span><button data-rm="${side}:${i}" aria-label="إزالة ${esc(f.name)}">×</button></span>`).join("");
+  });
+  // mapping editors
+  const rows = [];
+  ["bank", "books"].forEach(side => S.files[side].forEach((f, fi) => {
+    if (f.kind === "error") { rows.push(`<div class="maprow"><span class="tag">${side === "bank" ? "البنك" : "الدفاتر"}</span><b>${esc(f.name)}</b><span class="neg">${esc(f.error)}</span></div>`); return; }
+    if (f.kind !== "table") return;
+    f.sheets.forEach((sh, si) => {
+      const head = sh.header >= 0 ? sh.rows[sh.header] || [] : [];
+      const width = Math.max(head.length, ...sh.rows.slice(0, 50).map(r => (r || []).length));
+      const colName = i => { const L = XLSX.utils.encode_col(i); const h = head[i]; return h !== "" && h != null ? L + ": " + String(h).slice(0, 22) : L; };
+      const sel = role => `<label>${ROLE_AR[role]} <select data-map="${side}:${fi}:${si}:${role}"><option value="-1">—</option>${
+        Array.from({ length: width }, (_, i) => `<option value="${i}" ${sh.map[role] === i ? "selected" : ""}>${esc(colName(i))}</option>`).join("")}</select></label>`;
+      const ok = sh.map.date >= 0 && (sh.map.amount >= 0 || sh.map.debit >= 0 || sh.map.credit >= 0);
+      rows.push(`<div class="maprow"><span class="tag">${side === "bank" ? "البنك" : "الدفاتر"}</span><b title="${esc(f.name)}">${esc(f.name)}${f.sheets.length > 1 ? " / " + esc(sh.name) : ""}</b>${ROLES.map(sel).join("")}${ok ? "" : `<span class="neg">حدّد عمود التاريخ وعمود المبلغ</span>`}</div>`);
+    });
+  }));
+  $("maps").innerHTML = rows.join("");
+  $("sampleTag").hidden = !S.sample;
+  $("runBtn").disabled = !(S.files.bank.some(f => f.kind !== "error") && S.files.books.some(f => f.kind !== "error"));
+}
+
+function renderAll(){
+  renderFiles();
+  const res = $("results"), kp = $("kpis"), al = $("alert");
+  if (!S.ran) { res.hidden = true; kp.hidden = true; al.innerHTML = ""; return; }
+  res.hidden = false; kp.hidden = false;
+  const D = derived();
+  const diff = D.bankNet - D.booksNet;
+  kp.innerHTML = `
+    <div class="kpi"><div class="v num">${fmt(D.bankNet)}</div><div class="l">صافي حركة البنك (${BRAND.currency})</div></div>
+    <div class="kpi"><div class="v num">${fmt(D.booksNet)}</div><div class="l">صافي حركة الدفاتر (${BRAND.currency})</div></div>
+    <div class="kpi ${diff ? "bad" : "ok"}"><div class="v num">${fmt(diff)}</div><div class="l">الفرق (${BRAND.currency})</div></div>
+    <div class="kpi brass"><div class="v num">${D.bankMatched} / ${S.items.bank.length}</div><div class="l">مطابقة / حركات البنك</div></div>`;
+  if (!S.items.bank.length || !S.items.books.length) {
+    al.innerHTML = `<div class="alert b">لم تُقرأ أي حركات من ${!S.items.bank.length ? "ملف البنك" : "ملف الدفاتر"}. راجع ربط الأعمدة أعلاه (التاريخ والمبلغ أو مدين/دائن).</div>`;
+  } else if (D.bankOnly.length || D.booksOnly.length) {
+    al.innerHTML = `<div class="alert w">⚠️ ${D.bankOnly.length} حركة في البنك غير مسجلة بالدفاتر | ${D.booksOnly.length} حركة في الدفاتر لم تظهر في البنك</div>`;
+  } else al.innerHTML = `<div class="alert g">✅ جميع الحركات متطابقة بين البنك والدفاتر</div>`;
+
+  const tabs = [
+    ["matched", `مطابقة ${S.matches.length}`, "var(--good)"],
+    ["bank", `في البنك فقط ${D.bankOnly.length}`, "var(--bad)"],
+    ["books", `في الدفاتر فقط ${D.booksOnly.length}`, "var(--warn)"],
+    ["memo", "مذكرة التسوية", "var(--info)"]
+  ];
+  $("tabs").innerHTML = tabs.map(([k, l, c]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}"><span class="dot" style="background:${c}"></span>${l}</button>`).join("");
+  const body = $("tabBody");
+  if (S.tab === "matched") body.innerHTML = matchedTable(D);
+  else if (S.tab === "memo") body.innerHTML = memoView(D);
+  else body.innerHTML = onlyTable(S.tab, S.tab === "bank" ? D.bankOnly : D.booksOnly);
+}
+
+function matchedTable(D){
+  if (!S.matches.length) return `<div class="empty">لا توجد حركات مطابقة بعد.</div>`;
+  const ms = S.matches.slice().sort((a, b) => S.byId.get(a.bank[0]).day - S.byId.get(b.bank[0]).day);
+  let html = `<div class="tblwrap"><table><thead><tr><th>تاريخ البنك</th><th>بيان البنك</th><th>مبلغ البنك</th><th>تاريخ الدفاتر</th><th>بيان الدفاتر</th><th>مبلغ الدفاتر</th><th>الحالة</th><th></th></tr></thead>`;
+  let tb = 0;
+  ms.forEach(m => {
+    const B = m.bank.map(id => S.byId.get(id)), K = m.books.map(id => S.byId.get(id));
+    const n = Math.max(B.length, K.length);
+    const multi = n > 1;
+    html += `<tbody class="${multi ? "grp" : ""}">`;
+    for (let i = 0; i < n; i++) {
+      const b = B[i], k = K[i];
+      if (b) tb += b.c;
+      html += `<tr class="${!multi && (m.days || m.diff) ? "near" : ""}">
+        <td class="num">${b ? fmtDay(b.day) : ""}</td><td>${b ? esc(b.desc) : ""}</td>${b ? amtCell(b.c) : "<td></td>"}
+        <td class="num">${k ? fmtDay(k.day) : ""}</td><td>${k ? esc(k.desc) : ""}</td>${k ? amtCell(k.c) : "<td></td>"}
+        ${i === 0 ? `<td rowspan="${n}">${statusPill(m)}</td><td rowspan="${n}"><button class="x" data-unmatch="${esc(m.bank[0])}" title="فك المطابقة" aria-label="فك المطابقة">↺</button></td>` : ""}
+      </tr>`;
+    }
+    html += `</tbody>`;
+  });
+  html += `<tfoot><tr><td colspan="2">الإجمالي</td><td class="num">${fmt(tb)}</td><td colspan="5"></td></tr></tfoot></table></div>`;
+  const groups = S.matches.filter(m => m.type === "group").length;
+  html += `<div class="foot"><span>✅ ${D.bankMatched} حركة بنكية مطابقة${groups ? ` — منها ${groups} مجموعة مجمّعة` : ""}</span><button class="btn pri" data-export>📥 تصدير Excel</button></div>`;
+  return html;
+}
+
+function onlyTable(side, list){
+  const other = side === "bank" ? "books" : "bank";
+  const title = side === "bank" ? "حركات ظهرت في كشف البنك ولم تُسجّل في الدفاتر" : "قيود في الدفاتر لم تظهر في كشف البنك";
+  if (!list.length) return `<div class="empty">لا توجد ${side === "bank" ? "حركات في البنك فقط" : "قيود في الدفاتر فقط"}. 🎉</div>`;
+  const sumSel = s => [...S.sel[s]].reduce((t, id) => t + (S.byId.get(id)?.c || 0), 0);
+  const sb = sumSel("bank"), sk = sumSel("books");
+  const cnt = S.sel.bank.size + S.sel.books.size;
+  let html = `<div class="selbar"><span>${title}. لمطابقة يدوية: حدّد حركات من تبويب «في البنك فقط» وقيوداً من تبويب «في الدفاتر فقط» ثم اضغط مطابقة.</span>
+    <span>المحدد — بنك: <b class="num">${fmt(sb)}</b> (${S.sel.bank.size}) · دفاتر: <b class="num">${fmt(sk)}</b> (${S.sel.books.size}) · الفرق: <b class="num ${sb - sk ? "neg" : ""}">${fmt(sb - sk)}</b></span>
+    <button class="btn pri" data-manual ${S.sel.bank.size && S.sel.books.size ? "" : "disabled"}>مطابقة يدوية</button>
+    ${cnt ? `<button class="btn" data-clearsel>إلغاء التحديد</button>` : ""}</div>`;
+  html += `<div class="tblwrap"><table><thead><tr><th style="width:36px"></th><th>التاريخ</th><th>البيان</th><th>المبلغ</th><th>التصنيف المقترح</th><th>المصدر</th></tr></thead><tbody>`;
+  list.forEach(x => {
+    const kind = side === "bank" ? (x.c > 0 ? "إيداع/تحويل وارد لم يُسجّل" : "مصروف/رسوم بنكية لم تُسجّل") : (x.c > 0 ? "إيداع بالطريق" : "شيك/دفعة معلقة لم تُصرف");
+    html += `<tr><td><input type="checkbox" data-sel="${side}" value="${esc(x.id)}" ${S.sel[side].has(x.id) ? "checked" : ""} aria-label="تحديد"></td>
+      <td class="num">${fmtDay(x.day)}</td><td>${esc(x.desc)}</td>${amtCell(x.c)}<td><span class="pill ${side === "bank" ? "w" : "i"}">${kind}</span></td><td style="color:var(--muted);font-size:.76rem">${esc(x.src)}</td></tr>`;
+  });
+  const tot = list.reduce((s, x) => s + x.c, 0);
+  html += `</tbody><tfoot><tr><td></td><td colspan="2">الإجمالي (${list.length})</td><td class="num">${fmt(tot)}</td><td colspan="2"></td></tr></tfoot></table></div>`;
+  html += `<div class="foot"><span></span><button class="btn pri" data-export>📥 تصدير Excel</button></div>`;
+  return html;
+}
+
+function memoData(D){
+  const bb = parseNum($("balBank").value), kb = parseNum($("balBooks").value);
+  const dep = D.booksOnly.filter(x => x.c > 0), chq = D.booksOnly.filter(x => x.c < 0);
+  const bin = D.bankOnly.filter(x => x.c > 0), bout = D.bankOnly.filter(x => x.c < 0);
+  const s = a => a.reduce((t, x) => t + x.c, 0);
+  const hasB = !isNaN(bb), hasK = !isNaN(kb);
+  const adjBank = hasB ? cents(bb) + s(dep) + s(chq) : null;
+  const adjBooks = hasK ? cents(kb) + s(bin) + s(bout) + D.matchDiff : null;
+  return { bb: hasB ? cents(bb) : null, kb: hasK ? cents(kb) : null, dep, chq, bin, bout, s, adjBank, adjBooks };
+}
+function memoView(D){
+  const M = memoData(D);
+  const line = (label, c, cls = "") => `<tr class="${cls}"><td>${label}</td><td class="num" style="text-align:left">${c == null ? "—" : fmt(c)}</td></tr>`;
+  const subs = arr => arr.map(x => `<tr class="sub"><td>${fmtDay(x.day)} · ${esc(x.desc)}</td><td class="num" style="text-align:left">${fmt(x.c)}</td></tr>`).join("");
+  let html = `<div class="memo"><div><h3>أولاً: رصيد البنك</h3><table><tbody>
+    ${line("رصيد البنك حسب الكشف آخر الفترة", M.bb)}
+    ${line("يُضاف: إيداعات بالطريق (في الدفاتر فقط)", M.s(M.dep))}${subs(M.dep)}
+    ${line("يُطرح: شيكات ومدفوعات معلقة (في الدفاتر فقط)", M.s(M.chq))}${subs(M.chq)}
+    ${line("رصيد البنك المعدّل", M.adjBank, "tot")}
+  </tbody></table></div>
+  <div><h3>ثانياً: رصيد الدفاتر</h3><table><tbody>
+    ${line("رصيد الدفاتر آخر الفترة", M.kb)}
+    ${line("يُضاف: إيداعات وتحويلات واردة لم تُسجّل", M.s(M.bin))}${subs(M.bin)}
+    ${line("يُطرح: رسوم ومسحوبات بنكية لم تُسجّل", M.s(M.bout))}${subs(M.bout)}
+    ${D.matchDiff ? line("فروق مبالغ في حركات مطابقة ضمن هامش التسامح", D.matchDiff) : ""}
+    ${line("رصيد الدفاتر المعدّل", M.adjBooks, "tot")}
+  </tbody></table></div><div class="res2">`;
+  if (M.adjBank == null || M.adjBooks == null) html += `<div class="note i">أدخل «رصيد البنك آخر الفترة» و«رصيد الدفاتر آخر الفترة» في الخيارات أعلاه لإكمال المذكرة ومقارنة الرصيدين المعدّلين.</div>`;
+  else {
+    const d = M.adjBank - M.adjBooks;
+    html += d === 0 ? `<div class="alert g">✅ التسوية متوازنة: الرصيد المعدّل للبنك = الرصيد المعدّل للدفاتر = <span class="num">${fmt(M.adjBank)}</span></div>`
+      : `<div class="alert b">⚠️ فرق غير مفسَّر بعد التسوية: <span class="num">${fmt(d)}</span> — راجع الأرصدة المدخلة أو الحركات خارج فترة الملفات.</div>`;
+  }
+  html += `</div></div><div class="foot"><span></span><button class="btn pri" data-export>📥 تصدير Excel</button></div>`;
+  return html;
+}
+
+/* ---------- Excel export ---------- */
+async function exportExcel(){
+  const D = derived(), M = memoData(D), n = c => c == null ? "" : c / 100;
+  const wb = XLSX.utils.book_new();
+  const m1 = [["تاريخ البنك", "بيان البنك", "مبلغ البنك", "تاريخ الدفاتر", "بيان الدفاتر", "مبلغ الدفاتر", "الحالة"]];
+  S.matches.forEach(m => {
+    const B = m.bank.map(id => S.byId.get(id)), K = m.books.map(id => S.byId.get(id));
+    const st = statusPill(m).replace(/<[^>]+>/g, "").trim();
+    for (let i = 0; i < Math.max(B.length, K.length); i++) {
+      const b = B[i], k = K[i];
+      m1.push([b ? fmtDay(b.day) : "", b ? b.desc : "", b ? n(b.c) : "", k ? fmtDay(k.day) : "", k ? k.desc : "", k ? n(k.c) : "", i === 0 ? st : ""]);
+    }
+  });
+  const only = list => [["التاريخ", "البيان", "المبلغ", "المصدر"], ...list.map(x => [fmtDay(x.day), x.desc, n(x.c), x.src]), ["", "الإجمالي", n(list.reduce((s, x) => s + x.c, 0)), ""]];
+  const memo = [["مذكرة تسوية البنك", ""], ["", ""], ["رصيد البنك حسب الكشف", n(M.bb)], ["يُضاف: إيداعات بالطريق", n(M.s(M.dep))],
+    ...M.dep.map(x => ["   " + fmtDay(x.day) + " " + x.desc, n(x.c)]), ["يُطرح: شيكات ومدفوعات معلقة", n(M.s(M.chq))],
+    ...M.chq.map(x => ["   " + fmtDay(x.day) + " " + x.desc, n(x.c)]), ["رصيد البنك المعدّل", n(M.adjBank)], ["", ""],
+    ["رصيد الدفاتر", n(M.kb)], ["يُضاف: إيداعات وتحويلات لم تُسجّل", n(M.s(M.bin))], ...M.bin.map(x => ["   " + fmtDay(x.day) + " " + x.desc, n(x.c)]),
+    ["يُطرح: رسوم ومسحوبات لم تُسجّل", n(M.s(M.bout))], ...M.bout.map(x => ["   " + fmtDay(x.day) + " " + x.desc, n(x.c)]),
+    ...(D.matchDiff ? [["فروق مبالغ في حركات مطابقة", n(D.matchDiff)]] : []), ["رصيد الدفاتر المعدّل", n(M.adjBooks)], ["", ""],
+    ["صافي حركة البنك", n(D.bankNet)], ["صافي حركة الدفاتر", n(D.booksNet)], ["الفرق", n(D.bankNet - D.booksNet)]];
+  const add = (aoa, name, widths) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = widths.map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, name); };
+  add(m1, "المطابقة", [12, 34, 14, 12, 34, 14, 26]);
+  add(only(D.bankOnly), "في البنك فقط", [12, 40, 14, 30]);
+  add(only(D.booksOnly), "في الدفاتر فقط", [12, 40, 14, 30]);
+  add(memo, "مذكرة التسوية", [50, 16]);
+  wb.Workbook = { Views: [{ RTL: true }] };
+  const filename = "مطابقة_البنك_" + new Date().toISOString().slice(0, 10) + ".xlsx";
+  const dl = window.claude && window.claude.use ? await window.claude.use("downloads").catch(() => null) : null;
+  if (dl) {
+    const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    try { await dl.save({ filename, data: new Blob([data]) }); }
+    catch (e) { if (e && e.code !== "declined") toast("تعذّر حفظ الملف في هذا العرض."); }
+  } else XLSX.writeFile(wb, filename);
+}
+function toast(msg){ $("alert").insertAdjacentHTML("beforeend", `<div class="alert b">${esc(msg)}</div>`); }
+
+/* ---------- sample data ---------- */
+function loadSample(){
+  const d = s => { const [y, m, dd] = s.split("-").map(Number); return dayNum(y, m, dd); };
+  const bank = [
+    ["2026-09-01", "تحويل وارد - عميل أ", 5000], ["2026-09-01", "تحويل وارد - عميل ب", 3000], ["2026-09-02", "تحويل وارد - عميل ج", 2000],
+    ["2026-09-05", "إيداع نقدي", 7500], ["2026-09-06", "شيك رقم 101", -1200], ["2026-09-08", "سداد مورد - شركة النخبة", -4350],
+    ["2026-09-10", "رواتب سبتمبر", -18600], ["2026-09-30", "رسوم بنكية - عمولة حساب", -15]];
+  const books = [
+    ["2026-09-02", "تحصيلات عملاء الأسبوع", 10000], ["2026-09-05", "سند قبض 55", 4500], ["2026-09-05", "سند قبض 56", 3000],
+    ["2026-09-06", "شيك رقم 101", -1200], ["2026-09-07", "سداد مورد - شركة النخبة", -4350], ["2026-09-10", "رواتب سبتمبر", -18600],
+    ["2026-09-29", "شيك رقم 102 - إيجار المستودع", -800]];
+  const conv = a => a.map(([dt, desc, v]) => ({ day: d(dt), desc, c: cents(v) }));
+  S.files.bank = [{ name: "كشف_البنك_سبتمبر (نموذج)", kind: "rows", rows: conv(bank) }];
+  S.files.books = [{ name: "حساب_البنك_دفاتر (نموذج)", kind: "rows", rows: conv(books) }];
+  $("balBank").value = "48,320.00"; $("balBooks").value = "47,535.00";
+  S.matches = []; S.sample = true; S.tab = "matched";
+  runMatching(); renderAll();
+}
+
+/* ---------- events ---------- */
+async function addFiles(side, fileList){
+  if (S.sample) { S.files = { bank: [], books: [] }; S.sample = false; S.ran = false; $("balBank").value = ""; $("balBooks").value = ""; }
+  for (const f of fileList) {
+    try { S.files[side].push(await readFile(f)); }
+    catch (e) { S.files[side].push({ name: f.name, kind: "error", error: (e && e.message) || "تعذّرت قراءة الملف" }); }
+  }
+  renderAll();
+}
+["bank", "books"].forEach(side => {
+  const key = side === "bank" ? "Bank" : "Books", drop = $("drop" + key), inp = $("file" + key);
+  drop.addEventListener("click", e => { if (!e.target.closest("[data-rm]")) inp.click(); });
+  drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inp.click(); } });
+  inp.addEventListener("change", () => { addFiles(side, [...inp.files]); inp.value = ""; });
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); addFiles(side, [...e.dataTransfer.files]); });
+});
+document.addEventListener("click", e => {
+  const t = e.target.closest("button,[data-rm]");
+  if (!t) return;
+  if (t.dataset.rm) {
+    e.stopPropagation();
+    const [side, i] = t.dataset.rm.split(":");
+    S.files[side].splice(+i, 1);
+    if (S.sample) { S.sample = false; S.files = { bank: [], books: [] }; }
+    S.matches = []; S.ran = false; renderAll(); return;
+  }
+  if (t.dataset.tab) { S.tab = t.dataset.tab; renderAll(); return; }
+  if (t.dataset.unmatch) { S.matches = S.matches.filter(m => m.bank[0] !== t.dataset.unmatch); renderAll(); return; }
+  if (t.hasAttribute("data-export")) { exportExcel(); return; }
+  if (t.hasAttribute("data-clearsel")) { S.sel.bank.clear(); S.sel.books.clear(); renderAll(); return; }
+  if (t.hasAttribute("data-manual")) {
+    const B = [...S.sel.bank], K = [...S.sel.books];
+    const sb = B.reduce((s, id) => s + S.byId.get(id).c, 0), sk = K.reduce((s, id) => s + S.byId.get(id).c, 0);
+    const days = Math.max(0, ...B.flatMap(b => K.map(k => Math.abs(S.byId.get(b).day - S.byId.get(k).day))));
+    S.matches.push({ bank: B, books: K, type: "manual", days, diff: sb - sk });
+    S.sel.bank.clear(); S.sel.books.clear(); renderAll(); return;
+  }
+});
+document.addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.sel) { t.checked ? S.sel[t.dataset.sel].add(t.value) : S.sel[t.dataset.sel].delete(t.value); renderAll(); return; }
+  if (t.dataset.map) {
+    const [side, fi, si, role] = t.dataset.map.split(":");
+    const sh = S.files[side][+fi].sheets[+si];
+    sh.map[role] = +t.value;
+    if (sh.header < 0 && +t.value >= 0) sh.header = -1;
+    if (S.ran) { runMatching(); }
+    renderAll(); return;
+  }
+  if (["rev", "grp"].includes(t.id) && S.ran) { S.matches = S.matches.filter(m => m.type === "manual"); runMatching(); renderAll(); }
+  if (["balBank", "balBooks"].includes(t.id) && S.ran) renderAll();
+});
+$("runBtn").addEventListener("click", () => { S.matches = S.matches.filter(m => m.type === "manual"); runMatching(); S.tab = "matched"; renderAll(); });
+$("sampleBtn").addEventListener("click", loadSample);
+$("clearBtn").addEventListener("click", () => {
+  S.files = { bank: [], books: [] }; S.items = { bank: [], books: [] }; S.matches = []; S.ran = false; S.sample = false;
+  $("balBank").value = ""; $("balBooks").value = ""; renderAll();
+});
+
+/* ---------- branding ---------- */
+if (BRAND.name) {
+  $("owner").hidden = false;
+  $("owner").innerHTML = `<b>${esc(BRAND.name)}</b>${BRAND.title ? esc(BRAND.title) + "<br>" : ""}${BRAND.phone ? `<span class="num">${esc(BRAND.phone)}</span>` : ""}`;
+  $("credit").innerHTML = `إعداد: <b>${esc(BRAND.name)}</b>${BRAND.title ? " — " + esc(BRAND.title) : ""}${BRAND.whatsapp ? ` · واتساب <span class="num">${esc(BRAND.whatsapp)}</span>` : ""}`;
+} else {
+  $("credit").textContent = "جميع الملفات تُعالج محلياً داخل المتصفح ولا تُرسل إلى أي خادم.";
+}
+
+loadSample();   // open in a working state with clearly-labelled sample data
+})();
+</script>
+<!--APP-END-->
+</body>
+</html>
