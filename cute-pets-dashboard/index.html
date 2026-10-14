@@ -1000,7 +1000,7 @@ function compute() {
   const hasPayroll = !!(S.payroll?.rows?.length);
   const pay = hasPayroll ? payrollAlloc(S.payroll.rows) : null;
   const empCosts = hasPayroll && S.payroll.emp && Object.keys(S.payroll.emp).length ? S.payroll.emp : null;
-  let salariesReplaced = 0;
+  let salariesReplaced = 0, phoneTotal = 0;
   const fixedReplaced = [];
   const revSum = isRows.filter(r => ['sales', 'other', 'delivery'].includes(S.cls[r.account] || classify(r.account, r.group))).reduce((a, r) => a + r.amount, 0);
   const flip = revSum < 0 ? -1 : 1;
@@ -1013,6 +1013,8 @@ function compute() {
     // «عمولة مبيعات» in Edara is the commission paid for the month before: not this month's expense
     // (the month's own commissions are computed below, see COMMISSIONS)
     if (/عموله مبيعات/.test(norm(r.account))) continue;
+    // phone bills are redistributed by line (PHONE_SPLIT), whatever center Edara booked them on
+    if (curMonthKey() >= PHONE_SPLIT_FROM && (cat === 'admin' || cat === 'expense') && /هاتف|جوال|اتصالات/.test(norm(r.account))) { phoneTotal += a; continue; }
     // salaries never come from Edara: they come only from the monthly payroll sheet
     if (/رواتب|اجور/.test(norm(r.account)) && (cat === 'admin' || cat === 'expense')) { salariesReplaced += a; continue; }
     // employee-linked costs (GOSI, iqama, work office, medical) come from the payroll workbook when it has them
@@ -1046,6 +1048,8 @@ function compute() {
     for (const f of fixedList()) for (const [cid, v] of Object.entries(f.by || {})) if (v && c[cid]) {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
     }
+    if (phoneTotal) { const T = Object.values(PHONE_SPLIT).reduce((a, b) => a + b, 0);
+      for (const [cid, v] of Object.entries(PHONE_SPLIT)) { const a = phoneTotal * v / T; c[cid].admin += a; c[cid].lines.push({ account: 'مصاريف هاتف', cat: 'admin', amount: a }); } }
     // Salla's collection fee not yet booked: estimated from the store's sales until Edara records it
     for (const [cid, rate] of Object.entries(SALLA_ACCRUAL[curMonthKey()] || {})) {
       const x = c[cid]; if (!x || x.lines.some(l => SALLA_FEE.test(norm(l.account)))) continue;
@@ -1883,6 +1887,10 @@ function svcSplit(cid, total) {
 // everything else in the center's expenses is fixed for the month.
 const VARIABLE_EXP = /تحصيل|تابي|تمارا|مدي|مدى|عموله|عمولات|خصم مسموح|الخصم المسموح|توصيل|شحن|تغليف|محروقات|صيانه سيارات|صيانه السيارات|طيار|مصاريف مبيعات|مصروف المبيعات|مصاريف المبيعات|هدايا|منتهيه الصلاحيه/;
 const ADS_EXP = /دعاي|اعلان/;
+// phone lines and their centers (monthly bill, Sep 2026): the statement's phone expense is split in these proportions.
+// The three lines marked «رئيسي على 3» (120 + 120 + 80) go equally to the three online stores; the shop's landline (575) to the exhibit.
+const PHONE_SPLIT_FROM = '2026-09';
+const PHONE_SPLIT = { exhibit: 80 + 575, cpstore: 80 + 320 / 3, hamtaro: 80 + 320 / 3, wagy: 80 + 320 / 3, wholesale: 80 };
 // Salla's collection fee for a month whose statement does not have it yet, as a share of the store's sales
 // (the store's own rate in Jul–Aug 2026); dropped as soon as the statement carries the fee
 const SALLA_FEE = /تحصيل.*سل[هة]/;
