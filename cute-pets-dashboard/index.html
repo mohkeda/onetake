@@ -1350,7 +1350,8 @@ function applyTax(R) {
   const companyNet = CENTERS.filter(ce => !ce.shared).reduce((a, ce) => a + R.c[ce.id].net, 0);   // the shared center's kept delivery-app result is left aside for now
   const total = rate * Math.max(0, companyNet + addback);
   let borne = 0;
-  for (const ce of CENTERS) if (!ce.shared) { const x = R.c[ce.id]; x.tax = rate * Math.max(0, x.net); borne += x.tax; }
+  // every center adds to the tax base with its net, profit or loss: a loss carries a negative tax (it lowers the company's tax)
+  for (const ce of CENTERS) if (!ce.shared) { const x = R.c[ce.id]; x.tax = rate * x.net; borne += x.tax; }
   for (const ce of CENTERS) if (ce.shared) R.c[ce.id].tax = total - borne;
   for (const ce of CENTERS) { const x = R.c[ce.id]; x.netAfter = x.net - x.tax; }
   R.tax = { rate, addback, base: companyNet + addback, total, borne };
@@ -1647,7 +1648,7 @@ function renderResults() {
   const notes = [];
   if (r.payrollMissing) notes.push('⚠ الرواتب غير محتسبة: بانتظار كشف الرواتب');
   if (OWNER_DRAW_MONTHS[$('#month').value]) notes.push('راتب المدير العام (30,000) مسجل هذا الشهر مسحوبات مالك وليس مصروفاً: الأرباح لا تشمله، ونقطة التعادل تحسبه');
-  if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يتحمل ${fmt(r.tax.rate * 100)}% من ربحه فقط، والفرق ${money(r.tax.total - r.tax.borne)} على مستوى الشركة (يظهر في الإجمالي فقط)`);
+  if (r.tax?.total) notes.push(`ضريبة الدخل ${fmt(r.tax.rate * 100)}% على وعاء ${money(r.tax.base)} (صافي الشركة + ${money(r.tax.addback)} راتب المدير العام) = ${money(r.tax.total)}: كل مركز يساهم في الوعاء بصافيه ربحاً أو خسارة (${fmt(r.tax.rate * 100)}% من صافيه، والخسارة وفر ضريبي)، وضريبة الـ ${money(r.tax.addback)} المضافة ${money(r.tax.total - r.tax.borne)} على مستوى الشركة (تظهر في الإجمالي فقط)`);
   if (r.archive) notes.push(r.salesCalc ? (Object.values(r.c).some(x => x.fromSales) ? 'المبيعات وتكلفة البضاعة لـ' + CENTERS.filter(ce => r.c[ce.id].fromSales).map(ce => ce.short).join(' و') + ' من تقرير المبيعات (الملف كان منسوخاً من الشهر السابق) · ' : '') + 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) · تكلفة بضاعة الجملة في المراكز وإيراد الجملة محسوبان من تقرير المبيعات بأسعار الجملة القديمة · الجملة لم تكن تتحمل أي مصاريف قبل سبتمبر' : 'شهر مُقفل مستورد من ملف النتائج الشهري (الإكسيل) كما اعتُمد · الجملة غير مسجلة لهذا الشهر');
   if (r.xfer) notes.push('تكلفة بضاعة الجملة في المتاجر بسعر قائمة الجملة، وربحها يذهب لمركز الجملة');
   if (r.mainAllocated) notes.push(`مركز التكلفة المشترك (الرئيسي) موزع بالكامل: ${{ sales: 'بنسبة المبيعات', orders: 'بعدد الطلبات', equal: 'بالتساوي' }[store.settings.mainBasis]}، والمحروقات وصيانة السيارات والتغليف على المتاجر بالطلبات، والمصروفات الحكومية وتسوية المخزون متجاهلة، ومبيعات تطبيقات التوصيل وتكلفتها على حدة (غير معروضة حالياً)، و«عمولة مبيعات» في إدارة (تخص الشهر السابق) مستبعدة وتُحسب عمولات الشهر نفسه`);
@@ -1808,7 +1809,7 @@ function renderStatement() {
     t += row(`عمولة مدير المتجر (${COMMISSIONS.managerPct}% من صافي الربح)`, -x.mgrComm, 'indent', 'rev');
     t += row('صافي الربح بعد العمولة (قبل الضريبة)', x.net, 'sum', 'rev');
   } else t += row('صافي الربح / الخسارة', x.net, 'sum', 'rev');
-  if (x.tax) t += row('ضريبة الدخل (حصة المركز)', -x.tax, 'indent', 'rev');
+  if (x.tax) t += row(x.tax < 0 ? 'وفر ضريبي من خسارة المركز' : 'ضريبة الدخل (حصة المركز)', -x.tax, 'indent', 'rev');
   t += row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'rev');
   t += '</tbody></table>';
   $('#stTable').innerHTML = R.hasIS ? t : '<div class="empty">ارفع قائمة الدخل من تبويب المدخلات</div>';
@@ -1818,7 +1819,7 @@ function renderStatement() {
     ${row('خدمات الشحن الخارجي', x.delOut, '', 'none')}${row('إيراد التوصيل داخل الرياض', x.delIn, '', 'none')}
     ${lines('other').map(([a, v]) => row(a, v, '', 'none')).join('')}${split ? split.map(([label, v]) => row(label, v, '', 'none')).join('') : Math.abs(x.svcDiff) >= 0.5 ? row('ايراد الخدمات (غير التوصيل)', x.svcDiff, '', 'none') : ''}${x.mainRev ? row('حصة الرئيسي من الإيرادات', x.mainRev, '', 'none') : ''}
     ${row('إجمالي الإيرادات', rev, 'sub', 'none')}${row('المصاريف الإدارية', x.adminT, '', 'none')}${row('المصاريف التشغيلية', x.opex, '', 'none')}
-    ${row('إجمالي المصروفات', exp, 'sub', 'none')}${x.mgrComm ? row('صافي الربح / الخسارة', x.netBeforeMgr, 'sum', 'none') + row('عمولة مدير المتجر', -x.mgrComm, '', 'none') + row('صافي الربح بعد العمولة (قبل الضريبة)', x.net, 'sum', 'none') : row('صافي الربح / الخسارة', x.net, 'sum', 'none')}${x.tax ? row('ضريبة الدخل (حصة المركز)', -x.tax, '', 'none') : ''}${row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
+    ${row('إجمالي المصروفات', exp, 'sub', 'none')}${x.mgrComm ? row('صافي الربح / الخسارة', x.netBeforeMgr, 'sum', 'none') + row('عمولة مدير المتجر', -x.mgrComm, '', 'none') + row('صافي الربح بعد العمولة (قبل الضريبة)', x.net, 'sum', 'none') : row('صافي الربح / الخسارة', x.net, 'sum', 'none')}${x.tax ? row(x.tax < 0 ? 'وفر ضريبي من خسارة المركز' : 'ضريبة الدخل (حصة المركز)', -x.tax, '', 'none') : ''}${row('صافي الربح بعد الضريبة', x.netAfter ?? x.net, 'sum', 'none')}</tbody></table>`.replace(/<td><\/td><td><\/td>/g, '');
 
   // Sales by category: the current month next to the last saved months
   const cur = R.cats[stCenter] || {};
