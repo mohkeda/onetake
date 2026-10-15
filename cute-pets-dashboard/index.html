@@ -889,8 +889,11 @@ const FIXED_DEFAULT = [
   ['تأمين سيارات', { cpstore: 99.44, hamtaro: 99.44, wagy: 99.44 }, 'تامين سيار'],
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
+  ['مصاريف برنامج إدارة', { exhibit: 180.41, cpstore: 180.41, hamtaro: 180.41, wagy: 180.41 }, 'برنامج'],
+  ['اشتراك تطبيق إنجاز', { cpstore: 100, hamtaro: 100, wagy: 100 }, 'انجاز'],
 ].map(([name, by, re]) => ({ name, by, re }));
-const fixedList = () => (store.settings.fixed5 || FIXED_DEFAULT);
+// a list saved in the browser keeps its edits; items added to the defaults later are appended to it
+const fixedList = () => { const L = store.settings.fixed5; return L ? [...L, ...FIXED_DEFAULT.filter(d => !L.some(f => f.name === d.name))] : FIXED_DEFAULT; };
 // Al Rajhi loan (625,000, 24 installments of 31,810.07 on the 15th). The expense is the profit part of the
 // month's installment («خدمة القرض»), split equally on the exhibit, Cute and Hamtaro as before; the principal is not an expense.
 const LOAN_PROFIT = { '2026-09': 7043.14, '2026-10': 6413.73, '2026-11': 6201.35, '2026-12': 5585.43, '2027-01': 5331.53, '2027-02': 4887.20,
