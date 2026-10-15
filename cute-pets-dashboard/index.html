@@ -640,6 +640,8 @@ function loadStore() {
   try { const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (s) store = { ...store, ...s, settings: { ...DEFAULT_SETTINGS, ...(s.settings || {}) } }; } catch (e) {}
   if (!store.costs) { const m = Object.values(store.months).find(v => v.data?.costs); if (m) store.costs = m.data.costs; }
   // one-time reset: October 2026 starts empty (entries there came from the old month-picker bug / tests)
+  // Salla Pro is a yearly 2,600 per store: a saved fixed list still carrying the old 249 a month moves to 216.67
+  for (const f of store.settings.fixed5 || []) if (f.name === 'اشتراك سلة') for (const k of Object.keys(f.by || {})) if (f.by[k] === 249) f.by[k] = 216.67;
   if (!store.purgedOct26) { delete store.months['2026-10']; delete store.history['2026-10']; store.purgedOct26 = true; persist(); }
 }
 function persist() {
@@ -884,7 +886,7 @@ function mainDirect(r) {
 const FIXED_DEFAULT = [
   ['الإيجار', { exhibit: 10416.66, cpstore: 5208.33, hamtaro: 5208.33, wholesale: 1750 }, 'ايجار'],   // wholesale: 1,750 a month (Edara booked three months at once)
   ['أتعاب المحاسب القانوني', { exhibit: 361.11, cpstore: 361.11, hamtaro: 361.11 }, 'محاسب'],
-  ['اشتراك سلة', { cpstore: 249, hamtaro: 249, wagy: 249 }, 'اشتراك سل'],
+  ['اشتراك سلة', { cpstore: 216.67, hamtaro: 216.67, wagy: 216.67 }, 'اشتراك سل'],   // Salla Pro, 2,600 a year per store
   ['إهلاك سيارات', { cpstore: 404.36, hamtaro: 404.36, wagy: 404.36 }, 'اهلاك'],
   ['تأمين سيارات', { cpstore: 99.44, hamtaro: 99.44, wagy: 99.44 }, 'تامين سيار'],
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
