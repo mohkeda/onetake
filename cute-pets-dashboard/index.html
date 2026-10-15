@@ -891,7 +891,8 @@ const FIXED_DEFAULT = [
   ['تأمين سيارات', { cpstore: 99.44, hamtaro: 99.44, wagy: 99.44 }, 'تامين سيار'],
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
-  ['مصاريف برنامج إدارة', { exhibit: 180.41, cpstore: 180.41, hamtaro: 180.41, wagy: 180.41 }, 'برنامج'],
+  // Edara yearly subscription 8,714.82 (Sep 2026) = 726.24 a month, equally on the five centers
+  ['مصاريف برنامج إدارة', { exhibit: 145.25, cpstore: 145.25, hamtaro: 145.25, wagy: 145.25, wholesale: 145.25 }, 'برنامج'],
   ['اشتراك تطبيق إنجاز', { cpstore: 100, hamtaro: 100, wagy: 100 }, 'انجاز|ربط erp|^مصروف المبيعات$', true],   // Salla's «ربط ERP»; Edara books it as «مصروف المبيعات» on the stores
 ].map(([name, by, re, own]) => ({ name, by, re, own }));   // own: replaces matching lines only on its own centers
 // a list saved in the browser keeps its edits; items added to the defaults later are appended to it
@@ -916,7 +917,8 @@ const STORE_MANAGERS = { hamtaro: 'محمد عاطف' };
 const AD_SHARES = [['cpstore', 'exhibit', 0.25]];
 const AD_SHARE_EXCLUDE = /واتساب/;   // WhatsApp ads stay whole on the store
 // corrections to what Edara booked: [center, account pattern, amount taken out, why]
-const IS_ADJUST = { '2026-09': [['cpstore', /استضاف/, 2600, 'اشتراك سلة برو السنوي (يُحمَّل 216.67 شهرياً في الثابتة)']] };
+const IS_ADJUST = { '2026-09': [['cpstore', /استضاف/, 2600, 'اشتراك سلة برو السنوي (يُحمَّل 216.67 شهرياً في الثابتة)'],
+  ['exhibit', /استضاف/, 8714.82, 'اشتراك برنامج إدارة السنوي (يُحمَّل 726.24 شهرياً على المراكز الخمسة في الثابتة)']] };
 const COMMISSIONS = { managerPct: 5, importPct: 2, fishPct: 0.65, perRiyadhOrder: 0.5 };
 // Tayar (delivery management platform): each store's monthly invoice, and the drivers' delivered orders per store from
 // its drivers report (one driver works for all three stores). A store without a report falls back to its Riyadh orders in Salla.
