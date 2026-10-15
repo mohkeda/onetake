@@ -1156,10 +1156,11 @@ function compute() {
     else {
       // the cash-on-delivery fee (Salla) is its own revenue line; what is left is the difference from Edara
       x.cod = Math.min(x.cod, Math.max(0, x.delInIS + x.delOutIS - x.delIn - x.delOut));
-      if (x.cod) x.lines.push({ account: 'ايراد الدفع عند الاستلام', cat: 'other', amount: x.cod });
+      if (x.cod && !ce.delivery) x.lines.push({ account: 'ايراد الدفع عند الاستلام', cat: 'other', amount: x.cod });
       x.svcDiff = x.delInIS + x.delOutIS - x.delIn - x.delOut - x.cod; x.otherRev += x.svcDiff + x.cod;
       // online stores: the small difference from Edara's service revenue belongs to delivery revenue
-      if (ce.delivery && x.svcDiff) { x.delIn += x.svcDiff; x.otherRev -= x.svcDiff; x.svcDiff = 0; }
+      // (and so does the cash-on-delivery fee)
+      if (ce.delivery) { x.delIn += x.svcDiff + x.cod; x.otherRev -= x.svcDiff + x.cod; x.svcDiff = 0; }
     }
   }
   // shipping companies' invoices not yet booked: the store's cost is estimated from its outside-Riyadh shipping revenue,
@@ -1613,7 +1614,7 @@ function renderResults() {
     ['خدمات الشحن الخارجي', 'delOut', 'indent'],
     ['إيراد التوصيل داخل الرياض', 'delIn', 'indent'],
     ['إيرادات أخرى', 'otherRev', 'indent'],
-    ...(r.mainAllocated ? [['حصة الرئيسي من الإيرادات', 'mainRev', 'indent']] : []),
+    ...(r.mainAllocated && CENTERS.some(ce => Math.abs(r.c[ce.id].mainRev || 0) >= 0.5) ? [['حصة الرئيسي من الإيرادات', 'mainRev', 'indent']] : []),
     ['إجمالي الإيرادات', 'revenue', 'sub'],
     ['ثانياً: المصروفات', null, 'head'],
     ...(r.mainAllocated ? [['المصاريف الإدارية للمركز', 'admin', 'indent', -1], ['حصة الرئيسي (إدارية)', 'mainAdmin', 'indent', -1]] : []),
