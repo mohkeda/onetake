@@ -892,7 +892,7 @@ const FIXED_DEFAULT = [
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
   ['مصاريف برنامج إدارة', { exhibit: 180.41, cpstore: 180.41, hamtaro: 180.41, wagy: 180.41 }, 'برنامج'],
-  ['اشتراك تطبيق إنجاز', { cpstore: 100, hamtaro: 100, wagy: 100 }, 'انجاز'],
+  ['اشتراك تطبيق إنجاز', { cpstore: 100, hamtaro: 100, wagy: 100 }, 'انجاز|ربط erp'],   // the «ربط ERP» line of Salla's invoice
 ].map(([name, by, re]) => ({ name, by, re }));
 // a list saved in the browser keeps its edits; items added to the defaults later are appended to it
 const fixedList = () => { const L = store.settings.fixed5; return L ? [...L, ...FIXED_DEFAULT.filter(d => !L.some(f => f.name === d.name))] : FIXED_DEFAULT; };
