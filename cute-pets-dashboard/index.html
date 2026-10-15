@@ -79,6 +79,14 @@ input[type="month"], select, input[type="number"], input[type="text"] {
 .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 99px; font-size: .75rem; font-weight: 600; background: var(--warn-bg); color: var(--warn-ink); }
 .goal-t { font-size: .75rem; color: var(--muted); }
+.goal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px; }
+.goal-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; background: var(--surface); }
+.goal-card h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.goal-row { margin: 10px 0 2px; }
+.goal-row .lbl { display: flex; justify-content: space-between; gap: 8px; font-size: .88rem; }
+.goal-bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 5px; }
+.goal-bar i { display: block; height: 100%; border-radius: 99px; }
+.goal-res { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 600; }
 .badge.ok { background: var(--accent-soft); color: var(--accent); }
 
 main section.panel { display: grid; gap: 18px; padding-top: 18px; }
@@ -227,8 +235,9 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="table-wrap" id="allCatTable"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>أهداف الشهر</h2><p>الفعلي مقابل الهدف لكل مركز بيع · المؤشر الرئيسي: هامش المساهمة بعد الإعلان</p></div>
-        <div class="table-wrap" id="goalsTable"></div>
+        <div class="card-head"><h2>أهداف الشهر</h2><p>ثلاثة أهداف بسيطة لكل فرع</p></div>
+        <div class="goal-grid" id="goalsSimple"></div>
+        <details style="margin-top:14px"><summary class="sub-h" style="cursor:pointer">المؤشرات التفصيلية للإدارة</summary><div class="table-wrap" id="goalsTable"></div></details>
       </div>
       <div class="card" id="payoutCard" hidden>
         <div class="card-head"><h2>العمولات المستحقة عن الشهر</h2><p>تُصرف في الشهر التالي</p></div>
@@ -1830,13 +1839,31 @@ const GOALS = [
   { key: 'be', label: 'الإيرادات ÷ نقطة التعادل', unit: '%', dir: 1, t: { exhibit: 100, cpstore: 100, hamtaro: 100, wagy: 100 } },
 ];
 const GOAL_CENTERS = ['exhibit', 'cpstore', 'hamtaro', 'wagy'];
+// the staff version: monthly sales to reach, the most to spend on ads, and the sales each ads riyal must bring
+const SIMPLE_GOALS = { exhibit: { sales: 200000, ads: 8000 }, cpstore: { sales: 170000, ads: 17000 }, hamtaro: { sales: 280000, ads: 35000 }, wagy: { sales: 75000, ads: 7500 } };
 function goalActuals(x) {
   const bp = beParts(x), rev = x.revenue || 0; if (!rev) return null;
   const cm = (rev - bp.variable) / rev, be = cm > 0 ? bp.fixed / cm : 0;
   return { contrib: (rev - bp.variable - bp.ads) / rev * 100, mer: bp.ads ? rev / bp.ads : 0, ads: bp.ads / rev * 100, gm: x.gross / rev * 100,
     sell: (bp.variable - x.cogs) / rev * 100, be: be ? rev / be * 100 : 0 };
 }
+function renderSimpleGoals() {
+  const el = $('#goalsSimple'); if (!el) return;
+  const k = n => `<span class="num">${fmt(Math.round(n / 100) / 10, 1)}</span> ألف`;
+  const bar = (p, ok) => `<div class="goal-bar"><i style="width:${Math.min(100, Math.max(2, p))}%;background:var(${ok ? '--accent' : '--warn-ink'})"></i></div>`;
+  el.innerHTML = GOAL_CENTERS.map(id => {
+    const x = R.c[id], G = SIMPLE_GOALS[id], rev = x.revenue || 0, ads = beParts(x).ads, perRiyal = ads ? rev / ads : 0, need = G.sales / G.ads;
+    if (!rev) return `<div class="goal-card"><h3><i class="dot" style="background:var(${CMAP[id].color})"></i>${esc(CMAP[id].short)}</h3><div class="empty">لا توجد نتائج بعد</div></div>`;
+    const okS = rev >= G.sales, okA = ads <= G.ads, okR = perRiyal >= need, net = x.net;
+    return `<div class="goal-card"><h3><i class="dot" style="background:var(${CMAP[id].color})"></i>${esc(CMAP[id].short)}</h3>
+      <div class="goal-row"><div class="lbl"><span>${okS ? '✅' : '⏳'} المبيعات</span><span><b>${k(rev)}</b> من ${k(G.sales)}</span></div>${bar(rev / G.sales * 100, okS)}</div>
+      <div class="goal-row"><div class="lbl"><span>${okA ? '✅' : '⚠️'} صرف الإعلان</span><span><b>${k(ads)}</b> · الحد ${k(G.ads)}</span></div>${bar(ads / G.ads * 100, okA)}</div>
+      <div class="goal-row"><div class="lbl"><span>${okR ? '✅' : '⚠️'} كل ريال إعلان جاب</span><span><b class="num">${fmt(perRiyal, 1)}</b> ريال · المطلوب <span class="num">${fmt(need, 0)}</span></span></div>${bar(perRiyal / need * 100, okR)}</div>
+      <div class="goal-res" style="color:var(${net >= 0 ? '--good-ink' : '--bad-ink'})">${net >= 0 ? 'الفرع رابح هذا الشهر' : 'الفرع خاسر هذا الشهر'}: <span class="num">${signed(net)}</span></div></div>`;
+  }).join('');
+}
 function renderGoals() {
+  renderSimpleGoals();
   const el = $('#goalsTable'); if (!el) return;
   const A = Object.fromEntries(GOAL_CENTERS.map(id => [id, goalActuals(R.c[id])]));
   if (!GOAL_CENTERS.some(id => A[id])) { el.innerHTML = '<div class="empty">لا توجد نتائج لهذا الشهر بعد</div>'; return; }
