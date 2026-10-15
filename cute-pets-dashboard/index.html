@@ -914,6 +914,9 @@ function fixedMatch(account, center) {
 const STORE_MANAGERS = { hamtaro: 'محمد عاطف' };
 // advertising shared between centers: [from, to, share moved]
 const AD_SHARES = [['cpstore', 'exhibit', 0.25]];
+const AD_SHARE_EXCLUDE = /واتساب/;   // WhatsApp ads stay whole on the store
+// corrections to what Edara booked: [center, account pattern, amount taken out, why]
+const IS_ADJUST = { '2026-09': [['cpstore', /استضاف/, 2600, 'اشتراك سلة برو السنوي (يُحمَّل 216.67 شهرياً في الثابتة)']] };
 const COMMISSIONS = { managerPct: 5, importPct: 2, fishPct: 0.65, perRiyadhOrder: 0.5 };
 // Tayar (delivery management platform): each store's monthly invoice, and the drivers' delivered orders per store from
 // its drivers report (one driver works for all three stores). A store without a report falls back to its Riyadh orders in Salla.
@@ -1054,6 +1057,10 @@ function compute() {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
     }
     if (curMonthKey() >= PHONE_SPLIT_FROM) for (const [cid, a] of Object.entries(PHONE_SPLIT)) { c[cid].admin += a; c[cid].lines.push({ account: 'مصاريف هاتف', cat: 'admin', amount: a }); }
+    for (const [cid, re, amt] of IS_ADJUST[curMonthKey()] || []) {
+      const l = c[cid]?.lines.find(l => re.test(norm(l.account))); if (!l) continue;
+      const a = Math.min(amt, l.amount); l.amount -= a; if (l.cat === 'admin') c[cid].admin -= a; else c[cid].expenses -= a;
+    }
     // Salla's monthly invoices (before VAT), when Edara has not booked them
     for (const [cid, L] of Object.entries(SALLA_INVOICE[curMonthKey()] || {})) for (const [account, a] of L) {
       c[cid].expenses += a; c[cid].lines.push({ account, cat: 'expense', amount: a });
@@ -1276,7 +1283,7 @@ function compute() {
   if (isRows.length) {
     // Cute Pets' advertising is shared with the exhibit: 25% to the exhibit, 75% stays on the store (after the cashback)
     for (const [from, to, share] of AD_SHARES) {
-      const ads = c[from].lines.filter(l => l.cat === 'expense' && ADS_EXP.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
+      const ads = c[from].lines.filter(l => l.cat === 'expense' && ADS_EXP.test(norm(l.account)) && !AD_SHARE_EXCLUDE.test(norm(l.src || ''))).reduce((a, l) => a + l.amount, 0);
       const moved = ads * share;
       if (!moved) continue;
       c[from].expenses -= moved; c[from].lines.push({ account: 'مصاريف دعاية واعلان', cat: 'expense', amount: -moved });
