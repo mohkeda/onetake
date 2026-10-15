@@ -80,6 +80,8 @@ input[type="month"], select, input[type="number"], input[type="text"] {
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 99px; font-size: .75rem; font-weight: 600; background: var(--warn-bg); color: var(--warn-ink); }
 .goal-t { font-size: .75rem; color: var(--muted); }
 .goal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 14px; }
+#goalsSimple { display: block; }
+.goal-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; margin-bottom: 14px; }
 .goal-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; background: var(--surface); }
 .goal-card h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .goal-row { margin: 10px 0 2px; }
@@ -235,7 +237,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="table-wrap" id="allCatTable"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>أهداف الشهر</h2><p>ثلاثة أهداف بسيطة لكل فرع</p></div>
+        <div class="card-head"><h2>أهداف الشهر</h2><p>كل فرع لحاله: أهداف الفرع وأهداف فريق التسويق</p></div>
         <div class="goal-grid" id="goalsSimple"></div>
         <details style="margin-top:14px"><summary class="sub-h" style="cursor:pointer">المؤشرات التفصيلية للإدارة</summary><div class="table-wrap" id="goalsTable"></div></details>
       </div>
@@ -1847,7 +1849,9 @@ const GOALS = [
 const GOAL_CENTERS = ['exhibit', 'cpstore', 'hamtaro', 'wagy'];
 // the staff version: monthly sales to reach, the most to spend on ads, and the sales each ads riyal must bring
 // marketing team: orders, average order value, ads cost per order (online stores; the exhibit sells in the shop)
-const MARKETING_GOALS = { cpstore: { orders: 500, aov: 320, cpo: 34 }, hamtaro: { orders: 920, aov: 285, cpo: 38 }, wagy: { orders: 260, aov: 270, cpo: 29 } };   // aov: products only, without delivery fees
+const MARKETING_GOALS = { cpstore: { orders: 500, aov: 320, cpo: 34, mix: 22 }, hamtaro: { orders: 920, aov: 285, cpo: 38, mix: 25 }, wagy: { orders: 260, aov: 270, cpo: 29, mix: 22 } };
+// high-margin categories (about 55–80% gross margin against about 30% for cat food): their share of the store's sales is the mix goal
+const HIGH_MARGIN_CATS = /رمل|مكاف|مستلزمات|العاب|ألعاب|خداش|بيوت|اكواخ|اقفاص/;   // aov: products only, without delivery fees
 const SIMPLE_GOALS = { exhibit: { sales: 200000, ads: 8000 }, cpstore: { sales: 170000, ads: 17000 }, hamtaro: { sales: 280000, ads: 35000 }, wagy: { sales: 75000, ads: 7500 } };
 function goalActuals(x) {
   const bp = beParts(x), rev = x.revenue || 0; if (!rev) return null;
@@ -1878,15 +1882,18 @@ function marketingGoalCard(id, x) {
   if (!orders) return `<div class="goal-card">${gHead(id, 'فريق التسويق')}<div class="empty">يظهر بعد رفع تقرير طلبات المتجر</div></div>`;
   const aov = (rev - (x.delivery || 0)) / orders, cpo = ads / orders;
   const okO = orders >= G.orders, okV = aov >= G.aov, okC = cpo <= G.cpo;
+  const cats = R.cats?.[id] || {}, catTot = Object.values(cats).reduce((a, v) => a + Math.max(0, v), 0);
+  const mix = catTot ? Object.entries(cats).filter(([k]) => HIGH_MARGIN_CATS.test(norm(k))).reduce((a, [, v]) => a + Math.max(0, v), 0) / catTot * 100 : 0, okM = mix >= G.mix;
   return `<div class="goal-card">${gHead(id, 'فريق التسويق')}
     ${gRow(okO, 'عدد الطلبات', `<b class="num">${fmt(orders)}</b> من <span class="num">${fmt(G.orders)}</span>`, orders / G.orders * 100, '⏳')}
     ${gRow(okV, 'متوسط قيمة الطلب', `<b class="num">${fmt(aov)}</b> ريال · المطلوب <span class="num">${fmt(G.aov)}</span>`, aov / G.aov * 100)}
     ${gRow(okC, 'تكلفة الإعلان لكل طلب', `<b class="num">${fmt(cpo, 1)}</b> ريال · الحد <span class="num">${fmt(G.cpo)}</span>`, cpo / G.cpo * 100)}
+    ${catTot ? gRow(okM, 'مبيعات الرمل والمكافآت والمستلزمات', `<b class="num">${fmt(mix, 1)}%</b> من المبيعات · المطلوب <span class="num">${fmt(G.mix)}%</span>`, mix / G.mix * 100) : ''}
     <div class="goal-res goal-t">الطلبات × متوسط الطلب (بدون رسوم التوصيل) ≈ مبيعات المنتجات · تكلفة الطلب × الطلبات = حد الإعلان</div></div>`;
 }
 function renderSimpleGoals() {
   const el = $('#goalsSimple'); if (!el) return;
-  el.innerHTML = GOAL_CENTERS.map(id => branchGoalCard(id, R.c[id])).join('');
+  el.innerHTML = GOAL_CENTERS.map(id => `<div class="goal-pair">${branchGoalCard(id, R.c[id], 'أهداف الفرع')}${marketingGoalCard(id, R.c[id])}</div>`).join('');
 }
 function renderGoals() {
   renderSimpleGoals();
