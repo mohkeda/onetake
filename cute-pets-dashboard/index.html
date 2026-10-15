@@ -892,8 +892,8 @@ const FIXED_DEFAULT = [
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
   ['مصاريف برنامج إدارة', { exhibit: 180.41, cpstore: 180.41, hamtaro: 180.41, wagy: 180.41 }, 'برنامج'],
-  ['اشتراك تطبيق إنجاز', { cpstore: 100, hamtaro: 100, wagy: 100 }, 'انجاز|ربط erp'],   // the «ربط ERP» line of Salla's invoice
-].map(([name, by, re]) => ({ name, by, re }));
+  ['اشتراك تطبيق إنجاز', { cpstore: 100, hamtaro: 100, wagy: 100 }, 'انجاز|ربط erp|^مصروف المبيعات$', true],   // Salla's «ربط ERP»; Edara books it as «مصروف المبيعات» on the stores
+].map(([name, by, re, own]) => ({ name, by, re, own }));   // own: replaces matching lines only on its own centers
 // a list saved in the browser keeps its edits; items added to the defaults later are appended to it
 const fixedList = () => { const L = store.settings.fixed5; return L ? [...L, ...FIXED_DEFAULT.filter(d => !L.some(f => f.name === d.name))] : FIXED_DEFAULT; };
 // Al Rajhi loan (625,000, 24 installments of 31,810.07 on the 15th). The expense is the profit part of the
@@ -907,7 +907,7 @@ const LOAN_CENTERS = ['exhibit', 'cpstore', 'hamtaro'];
 const LOAN_FIX = { '2026-05': 8367.85, '2026-07': 7604.60, '2026-08': 7451.89 };
 function fixedMatch(account, center) {
   const t = norm(account);
-  return fixedList().find(f => f.re && new RegExp(f.re).test(t));
+  return fixedList().find(f => f.re && new RegExp(f.re).test(t) && (!f.own || f.by[center]));
 }
 
 /* ---------- commissions (paid the month after; booked here in the month earned) ---------- */
@@ -1912,13 +1912,7 @@ const PHONE_SPLIT = { exhibit: 80 + 575, cpstore: 80 + 320 / 3, hamtaro: 80 + 32
 const SALLA_FEE = /تحصيل.*سل[هة]/;
 const SALLA_ACCRUAL = {};   // e.g. { '2026-09': { cpstore: 0.01345, hamtaro: 0.01407, wagy: 0.0144 } } until the invoices came
 // Salla invoices for the month, before VAT (input VAT is recovered): collection fees and Salla shipping, on top of what Edara booked
-const SALLA_INVOICE = {
-  '2026-09': {
-    cpstore: [['تحصيل منصة سلة', 1728.81], ['شحن سلة', 4340.02]],
-    hamtaro: [['تحصيل منصة سلة', 3327.73], ['شحن سلة', 8267.58], ['دعاية وإعلان سلة', 348]],
-    wagy: [['تحصيل منصة سلة', 679.35], ['شحن سلة', 1968.32]],
-  },
-};
+const SALLA_INVOICE = {};   // Sep 2026's invoice is booked in the revised statement (توصيل المتجر, رسوم تحصيل منصه سله, دعاية)
 // store delivery (shipping companies) for a month whose invoices are not booked yet: cost = outside-Riyadh shipping revenue × the
 // store's own Jul–Aug 2026 ratio of delivery cost to shipping revenue
 const DELIVERY_ACCRUAL = {};   // e.g. { '2026-09': { cpstore: 1.02, hamtaro: 0.90, wagy: 1.06 } } until Salla's invoices came
