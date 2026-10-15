@@ -78,6 +78,7 @@ input[type="month"], select, input[type="number"], input[type="text"] {
 .tab { border: 0; background: none; padding: 10px 14px; border-bottom: 3px solid transparent; color: var(--ink-2); white-space: nowrap; font-weight: 500; }
 .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 99px; font-size: .75rem; font-weight: 600; background: var(--warn-bg); color: var(--warn-ink); }
+.goal-t { font-size: .75rem; color: var(--muted); }
 .badge.ok { background: var(--accent-soft); color: var(--accent); }
 
 main section.panel { display: grid; gap: 18px; padding-top: 18px; }
@@ -224,6 +225,10 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div id="allCatShare"></div>
         <h3 class="sub-h" style="margin-top:14px">نسب الأقسام شهرياً</h3>
         <div class="table-wrap" id="allCatTable"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>أهداف الشهر</h2><p>الفعلي مقابل الهدف لكل مركز بيع · المؤشر الرئيسي: هامش المساهمة بعد الإعلان</p></div>
+        <div class="table-wrap" id="goalsTable"></div>
       </div>
       <div class="card" id="payoutCard" hidden>
         <div class="card-head"><h2>العمولات المستحقة عن الشهر</h2><p>تُصرف في الشهر التالي</p></div>
@@ -1548,6 +1553,7 @@ function renderResults() {
   renderChips();
   const r = R, sel = SHOWN.filter(ce => selected.has(ce.id));
   renderCatYear('all', sel.map(ce => ce.id));
+  renderGoals();
   // with every center selected, the totals are the company's: they include what stays on the shared center (the company-level tax difference)
   const shared = sel.length === SHOWN.length ? CENTERS.filter(ce => ce.shared) : [];
   // only the company-level tax difference is carried from the shared center; its kept delivery-app result is not shown
@@ -1811,6 +1817,43 @@ function renderStatement() {
   ct += `<tr class="sum"><td>الإجمالي</td>${cols.map(c => `<td class="n">${money(Object.values(c.data).reduce((a, b) => a + b, 0))}</td>`).join('')}<td></td></tr></tbody></table>`;
   $('#stCats').innerHTML = ct;
   renderCatYear('st', [stCenter]);
+}
+
+/* ---------- monthly goals: actual against target per store ---------- */
+// dir 1 = at least the target, -1 = at most
+const GOALS = [
+  { key: 'contrib', label: 'هامش المساهمة بعد الإعلان', unit: '%', dir: 1, t: { exhibit: 55, cpstore: 18, hamtaro: 18, wagy: 18 }, main: true },
+  { key: 'mer', label: 'MER (الإيراد ÷ الإعلان)', unit: '×', dir: 1, t: { exhibit: 25, cpstore: 10, hamtaro: 8, wagy: 10 } },
+  { key: 'ads', label: 'الإعلان من الإيرادات', unit: '%', dir: -1, t: { exhibit: 4, cpstore: 10, hamtaro: 12, wagy: 10 } },
+  { key: 'gm', label: 'هامش مجمل الربح', unit: '%', dir: 1, t: { exhibit: 65, cpstore: 45, hamtaro: 45, wagy: 45 } },
+  { key: 'sell', label: 'تكاليف البيع المتغيرة (تحصيل، خصم، شحن، تغليف…)', unit: '%', dir: -1, t: { exhibit: 4, cpstore: 10, hamtaro: 10, wagy: 10 } },
+  { key: 'be', label: 'الإيرادات ÷ نقطة التعادل', unit: '%', dir: 1, t: { exhibit: 100, cpstore: 100, hamtaro: 100, wagy: 100 } },
+];
+const GOAL_CENTERS = ['exhibit', 'cpstore', 'hamtaro', 'wagy'];
+function goalActuals(x) {
+  const bp = beParts(x), rev = x.revenue || 0; if (!rev) return null;
+  const cm = (rev - bp.variable) / rev, be = cm > 0 ? bp.fixed / cm : 0;
+  return { contrib: (rev - bp.variable - bp.ads) / rev * 100, mer: bp.ads ? rev / bp.ads : 0, ads: bp.ads / rev * 100, gm: x.gross / rev * 100,
+    sell: (bp.variable - x.cogs) / rev * 100, be: be ? rev / be * 100 : 0 };
+}
+function renderGoals() {
+  const el = $('#goalsTable'); if (!el) return;
+  const A = Object.fromEntries(GOAL_CENTERS.map(id => [id, goalActuals(R.c[id])]));
+  if (!GOAL_CENTERS.some(id => A[id])) { el.innerHTML = '<div class="empty">لا توجد نتائج لهذا الشهر بعد</div>'; return; }
+  const f = (v, u) => u === '×' ? fmt(v, 1) + ' مرة' : fmt(v, 1) + '%';
+  let hit = 0, all = 0;
+  let t = `<table><thead><tr><th>المؤشر</th>${GOAL_CENTERS.map(id => `<th class="n">${esc(CMAP[id].short)}</th>`).join('')}</tr></thead><tbody>`;
+  for (const g of GOALS) {
+    t += `<tr${g.main ? ' class="sub"' : ''}><td>${g.main ? '<b>' + esc(g.label) + '</b> ★' : esc(g.label)}<div class="goal-t">الهدف ${g.dir > 0 ? 'لا يقل عن' : 'لا يزيد عن'}</div></td>`;
+    for (const id of GOAL_CENTERS) {
+      const a = A[id]; if (!a) { t += '<td class="n">—</td>'; continue; }
+      const v = a[g.key], tg = g.t[id], ok = g.dir > 0 ? v >= tg : v <= tg; all++; if (ok) hit++;
+      t += `<td class="n"><b class="num">${f(v, g.unit)}</b> <span class="badge${ok ? ' ok' : ''}">${ok ? '✓ محقق' : '✗ غير محقق'}</span><div class="goal-t">الهدف <span class="num">${f(tg, g.unit)}</span></div></td>`;
+    }
+    t += '</tr>';
+  }
+  t += `</tbody></table><p class="note">تحقق <b class="num">${hit}</b> من <b class="num">${all}</b> هدف هذا الشهر. هامش المساهمة بعد الإعلان = (الإيرادات − التكاليف المتغيرة − الإعلان) ÷ الإيرادات، وهو ما يبقى لتغطية المصاريف الثابتة.</p>`;
+  el.innerHTML = t;
 }
 
 /* ---------- category sales over the year (saved months of the selected month's year), laid out like the monthly results workbook ---------- */
