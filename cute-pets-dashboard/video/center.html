@@ -86,6 +86,7 @@ const salesG = D.branch && D.branch[0];
 S.push(['out', 4.5, `<div class="eyebrow">هدف أكتوبر</div><h1 style="font-size:96px" id="o1">${salesG ? `<span class="num">${(salesG.t / 1000).toFixed(0)}</span> ألف مبيعات` : 'نكمل بنفس القوة'}</h1>
   <div class="lead" id="o2" style="margin-top:30px">${D.branch ? `إعلان لا يزيد عن <span class="num">${(D.branch[1].t / 1000).toFixed(1)}</span> ألف · كل ريال إعلان يجيب <span class="num">${D.branch[2].t.toFixed(0)}</span> ريال` : 'هامش 53% · زيادة عملاء الجملة والبراندات في المعرض'}</div>
   <div class="net" id="o3" style="color:var(--c);margin-top:50px">فريق ${D.name} · نقدر نوصل 💪</div>`]);
+if (D.durs) D.durs.forEach((d, i) => { if (S[i]) S[i][1] = d; });   // timed to a voiceover
 let t0 = 0; const W = S.map(([id, dur, html]) => { const w = { id, a: t0, b: t0 + dur }; t0 += dur; return w; });
 const TOTAL = t0; window.TOTAL = TOTAL;
 $('scenes').innerHTML = S.map(([id, , html]) => `<section class="scene" id="s_${id}">${html}</section>`).join('');
@@ -107,7 +108,7 @@ window.render = t => {
       stag($(pre + i), l, i, .35); const scale = Math.max(g.v, g.t) * 1.15;
       $(pre + 'f' + i).style.width = (g.v / scale * 100 * ease((l - .6 - i * .35) / 1.2)) + '%';
     });
-    if (w.id === 'tips') D.tips.forEach((_, i) => stag($('t' + i), l, i, .9));
+    if (w.id === 'tips') D.tips.forEach((_, i) => stag($('t' + i), l, i, Math.max(.9, (w.b - w.a - 1) / D.tips.length)));
     if (w.id === 'out') ['o1', 'o2', 'o3'].forEach((id, i) => stag($(id), l, i, .35));
   }
 };
