@@ -265,6 +265,10 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
           <div id="chartCenterTrend"></div>
         </div>
       </div>
+      <div class="card" id="stGoalsCard">
+        <div class="card-head"><h2>أهداف الشهر</h2><p>أهداف الفرع وأهداف فريق التسويق</p></div>
+        <div class="goal-grid" id="stGoals"></div>
+      </div>
       <div class="card st-full">
         <div class="card-head"><h2>قائمة الدخل</h2><p>النسبة من إجمالي المصروفات ومن إجمالي الإيرادات</p></div>
         <div class="table-wrap" id="stTable"></div>
@@ -1686,6 +1690,8 @@ function renderStatement() {
   const ce = CMAP[stCenter], x = R.c[stCenter], mo = $('#month').value;
   const [y, m] = mo.split('-').map(Number);
   $('#stTitle').textContent = `النتائج الشهرية لـ${ce.name} عن شهر ${m}/${y}`;
+  const gc = branchGoalCard(stCenter, x, 'أهداف الفرع') + marketingGoalCard(stCenter, x);
+  $('#stGoalsCard').hidden = !gc; $('#stGoals').innerHTML = gc;
   $('#cDot').style.background = `var(${ce.color})`;
   $('#payWarn').hidden = !R.payrollMissing;
 
@@ -1840,6 +1846,8 @@ const GOALS = [
 ];
 const GOAL_CENTERS = ['exhibit', 'cpstore', 'hamtaro', 'wagy'];
 // the staff version: monthly sales to reach, the most to spend on ads, and the sales each ads riyal must bring
+// marketing team: orders, average order value, ads cost per order (online stores; the exhibit sells in the shop)
+const MARKETING_GOALS = { cpstore: { orders: 500, aov: 320, cpo: 34 }, hamtaro: { orders: 920, aov: 285, cpo: 38 }, wagy: { orders: 260, aov: 270, cpo: 29 } };   // aov: products only, without delivery fees
 const SIMPLE_GOALS = { exhibit: { sales: 200000, ads: 8000 }, cpstore: { sales: 170000, ads: 17000 }, hamtaro: { sales: 280000, ads: 35000 }, wagy: { sales: 75000, ads: 7500 } };
 function goalActuals(x) {
   const bp = beParts(x), rev = x.revenue || 0; if (!rev) return null;
@@ -1847,20 +1855,38 @@ function goalActuals(x) {
   return { contrib: (rev - bp.variable - bp.ads) / rev * 100, mer: bp.ads ? rev / bp.ads : 0, ads: bp.ads / rev * 100, gm: x.gross / rev * 100,
     sell: (bp.variable - x.cogs) / rev * 100, be: be ? rev / be * 100 : 0 };
 }
+const gK = n => `<span class="num">${fmt(Math.round(n / 100) / 10, 1)}</span> ألف`;
+const gBar = (p, ok) => `<div class="goal-bar"><i style="width:${Math.min(100, Math.max(2, p))}%;background:var(${ok ? '--accent' : '--warn-ink'})"></i></div>`;
+const gRow = (ok, label, val, p, warn = '⚠️') => `<div class="goal-row"><div class="lbl"><span>${ok ? '✅' : warn} ${label}</span><span>${val}</span></div>${gBar(p, ok)}</div>`;
+const gHead = (id, sub) => `<h3><i class="dot" style="background:var(${CMAP[id].color})"></i>${esc(CMAP[id].short)}${sub ? ` <span class="goal-t">${sub}</span>` : ''}</h3>`;
+// the branch's three goals: sales, ads spend, sales per ads riyal
+function branchGoalCard(id, x, title) {
+  const G = SIMPLE_GOALS[id]; if (!G) return '';
+  const rev = x?.revenue || 0, ads = rev ? beParts(x).ads : 0, perRiyal = ads ? rev / ads : 0, need = G.sales / G.ads;
+  if (!rev) return `<div class="goal-card">${gHead(id, title)}<div class="empty">لا توجد نتائج بعد</div></div>`;
+  const okS = rev >= G.sales, okA = ads <= G.ads, okR = perRiyal >= need, net = x.net;
+  return `<div class="goal-card">${gHead(id, title)}
+    ${gRow(okS, 'المبيعات', `<b>${gK(rev)}</b> من ${gK(G.sales)}`, rev / G.sales * 100, '⏳')}
+    ${gRow(okA, 'صرف الإعلان', `<b>${gK(ads)}</b> · الحد ${gK(G.ads)}`, ads / G.ads * 100)}
+    ${gRow(okR, 'كل ريال إعلان جاب', `<b class="num">${fmt(perRiyal, 1)}</b> ريال · المطلوب <span class="num">${fmt(need, 0)}</span>`, perRiyal / need * 100)}
+    <div class="goal-res" style="color:var(${net >= 0 ? '--good-ink' : '--bad-ink'})">${net >= 0 ? 'الفرع رابح هذا الشهر' : 'الفرع خاسر هذا الشهر'}: <span class="num">${signed(net)}</span></div></div>`;
+}
+// the marketing team's goals: orders, average order value, ads cost per order
+function marketingGoalCard(id, x) {
+  const G = MARKETING_GOALS[id]; if (!G) return '';
+  const orders = x?.ordAll || 0, rev = x?.revenue || 0, ads = rev ? beParts(x).ads : 0;
+  if (!orders) return `<div class="goal-card">${gHead(id, 'فريق التسويق')}<div class="empty">يظهر بعد رفع تقرير طلبات المتجر</div></div>`;
+  const aov = (rev - (x.delivery || 0)) / orders, cpo = ads / orders;
+  const okO = orders >= G.orders, okV = aov >= G.aov, okC = cpo <= G.cpo;
+  return `<div class="goal-card">${gHead(id, 'فريق التسويق')}
+    ${gRow(okO, 'عدد الطلبات', `<b class="num">${fmt(orders)}</b> من <span class="num">${fmt(G.orders)}</span>`, orders / G.orders * 100, '⏳')}
+    ${gRow(okV, 'متوسط قيمة الطلب', `<b class="num">${fmt(aov)}</b> ريال · المطلوب <span class="num">${fmt(G.aov)}</span>`, aov / G.aov * 100)}
+    ${gRow(okC, 'تكلفة الإعلان لكل طلب', `<b class="num">${fmt(cpo, 1)}</b> ريال · الحد <span class="num">${fmt(G.cpo)}</span>`, cpo / G.cpo * 100)}
+    <div class="goal-res goal-t">الطلبات × متوسط الطلب (بدون رسوم التوصيل) ≈ مبيعات المنتجات · تكلفة الطلب × الطلبات = حد الإعلان</div></div>`;
+}
 function renderSimpleGoals() {
   const el = $('#goalsSimple'); if (!el) return;
-  const k = n => `<span class="num">${fmt(Math.round(n / 100) / 10, 1)}</span> ألف`;
-  const bar = (p, ok) => `<div class="goal-bar"><i style="width:${Math.min(100, Math.max(2, p))}%;background:var(${ok ? '--accent' : '--warn-ink'})"></i></div>`;
-  el.innerHTML = GOAL_CENTERS.map(id => {
-    const x = R.c[id], G = SIMPLE_GOALS[id], rev = x.revenue || 0, ads = beParts(x).ads, perRiyal = ads ? rev / ads : 0, need = G.sales / G.ads;
-    if (!rev) return `<div class="goal-card"><h3><i class="dot" style="background:var(${CMAP[id].color})"></i>${esc(CMAP[id].short)}</h3><div class="empty">لا توجد نتائج بعد</div></div>`;
-    const okS = rev >= G.sales, okA = ads <= G.ads, okR = perRiyal >= need, net = x.net;
-    return `<div class="goal-card"><h3><i class="dot" style="background:var(${CMAP[id].color})"></i>${esc(CMAP[id].short)}</h3>
-      <div class="goal-row"><div class="lbl"><span>${okS ? '✅' : '⏳'} المبيعات</span><span><b>${k(rev)}</b> من ${k(G.sales)}</span></div>${bar(rev / G.sales * 100, okS)}</div>
-      <div class="goal-row"><div class="lbl"><span>${okA ? '✅' : '⚠️'} صرف الإعلان</span><span><b>${k(ads)}</b> · الحد ${k(G.ads)}</span></div>${bar(ads / G.ads * 100, okA)}</div>
-      <div class="goal-row"><div class="lbl"><span>${okR ? '✅' : '⚠️'} كل ريال إعلان جاب</span><span><b class="num">${fmt(perRiyal, 1)}</b> ريال · المطلوب <span class="num">${fmt(need, 0)}</span></span></div>${bar(perRiyal / need * 100, okR)}</div>
-      <div class="goal-res" style="color:var(${net >= 0 ? '--good-ink' : '--bad-ink'})">${net >= 0 ? 'الفرع رابح هذا الشهر' : 'الفرع خاسر هذا الشهر'}: <span class="num">${signed(net)}</span></div></div>`;
-  }).join('');
+  el.innerHTML = GOAL_CENTERS.map(id => branchGoalCard(id, R.c[id])).join('');
 }
 function renderGoals() {
   renderSimpleGoals();
