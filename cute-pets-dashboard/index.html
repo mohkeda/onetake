@@ -1052,6 +1052,10 @@ function compute() {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
     }
     if (curMonthKey() >= PHONE_SPLIT_FROM) for (const [cid, a] of Object.entries(PHONE_SPLIT)) { c[cid].admin += a; c[cid].lines.push({ account: 'مصاريف هاتف', cat: 'admin', amount: a }); }
+    // Salla's monthly invoices (before VAT), when Edara has not booked them
+    for (const [cid, L] of Object.entries(SALLA_INVOICE[curMonthKey()] || {})) for (const [account, a] of L) {
+      c[cid].expenses += a; c[cid].lines.push({ account, cat: 'expense', amount: a });
+    }
     // Salla's collection fee not yet booked: estimated from the store's sales until Edara records it
     for (const [cid, rate] of Object.entries(SALLA_ACCRUAL[curMonthKey()] || {})) {
       const x = c[cid]; if (!x || x.lines.some(l => SALLA_FEE.test(norm(l.account)))) continue;
@@ -1904,10 +1908,18 @@ const PHONE_SPLIT = { exhibit: 80 + 575, cpstore: 80 + 320 / 3, hamtaro: 80 + 32
 // Salla's collection fee for a month whose statement does not have it yet, as a share of the store's sales
 // (the store's own rate in Jul–Aug 2026); dropped as soon as the statement carries the fee
 const SALLA_FEE = /تحصيل.*سل[هة]/;
-const SALLA_ACCRUAL = { '2026-09': { cpstore: 0.01345, hamtaro: 0.01407, wagy: 0.0144 } };
+const SALLA_ACCRUAL = {};   // e.g. { '2026-09': { cpstore: 0.01345, hamtaro: 0.01407, wagy: 0.0144 } } until the invoices came
+// Salla invoices for the month, before VAT (input VAT is recovered): collection fees and Salla shipping, on top of what Edara booked
+const SALLA_INVOICE = {
+  '2026-09': {
+    cpstore: [['تحصيل منصة سلة', 1728.81], ['شحن سلة', 4340.02]],
+    hamtaro: [['تحصيل منصة سلة', 3327.73], ['شحن سلة', 8267.58], ['دعاية وإعلان سلة', 348]],
+    wagy: [['تحصيل منصة سلة', 679.35], ['شحن سلة', 1968.32]],
+  },
+};
 // store delivery (shipping companies) for a month whose invoices are not booked yet: cost = outside-Riyadh shipping revenue × the
 // store's own Jul–Aug 2026 ratio of delivery cost to shipping revenue
-const DELIVERY_ACCRUAL = { '2026-09': { cpstore: 1.02, hamtaro: 0.90, wagy: 1.06 } };
+const DELIVERY_ACCRUAL = {};   // e.g. { '2026-09': { cpstore: 1.02, hamtaro: 0.90, wagy: 1.06 } } until Salla's invoices came
 // packaging bought near a month's end: only the days used that month are its cost, the rest moves to the next month
 // (used = days used / 30, the batch covering about a month)
 const PACK_PREPAID = [{ month: '2026-09', amount: 3552, used: 3 / 30, note: 'مواد تغليف صُرفت 27/9' }];
