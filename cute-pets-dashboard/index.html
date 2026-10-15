@@ -347,6 +347,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
 
     <!-- INPUTS -->
     <section class="panel" id="tab-inputs" hidden>
+      <div class="note" id="closedNote" hidden style="border-color:var(--accent);font-weight:600"></div>
       <div class="note">ارفع ملفات Excel أو CSV المصدَّرة من برنامج <b>إدارة</b>. تُكتشف الأعمدة تلقائيًا، ويمكنك تصحيح الربط من القوائم تحت كل ملف. البيانات تبقى في متصفحك فقط.</div>
       <div class="uploads">
         <div class="card up" id="up-is">
@@ -915,6 +916,8 @@ function fixedMatch(account, center) {
 const STORE_MANAGERS = { hamtaro: 'محمد عاطف' };
 // advertising shared between centers: [from, to, share moved]
 const AD_SHARES = [['cpstore', 'exhibit', 0.25]];
+// months closed after review: read-only in the inputs tab, always from the published data
+const CLOSED_MONTHS = new Set(['2026-09']);
 const AD_SHARE_EXCLUDE = /واتساب/;   // WhatsApp ads stay whole on the store
 // corrections to what Edara booked: [center, account pattern, amount taken out, why]
 const IS_ADJUST = { '2026-09': [['cpstore', /استضاف/, 2600, 'اشتراك سلة برو السنوي (يُحمَّل 216.67 شهرياً في الثابتة)'],
@@ -2244,6 +2247,12 @@ function renderManualInputs() {
   $('#miAddDriver').onclick = () => { S.manual = { ...(S.manual || {}), driverNames: [...names.filter(Boolean), 'سواق جديد'] }; renderManualInputs(); };
 }
 function renderInputs() {
+  // a closed month is final: its inputs are the published ones and cannot be changed here
+  const closed = CLOSED_MONTHS.has($('#month').value);
+  $('#closedNote').hidden = !closed;
+  if (closed) $('#closedNote').textContent = `شهر ${monthLabel($('#month').value)} مقفل: الأرقام نهائية ولا يمكن تعديل مدخلاته`;
+  $('#tab-inputs').querySelectorAll('input, select, button').forEach(e => { e.disabled = closed; });
+  ['#saveMonth', '#clearMonth'].forEach(id => { const e = $(id); if (e) e.disabled = closed; });
   renderManualInputs();
   const st = (id, html) => { $(`#${id} .status`).innerHTML = html; };
   st('up-is', S.is ? `<span class="badge ok">✓ ${esc(S.is.fileName)}</span> <span class="num">${fmt(S.is.rows.length)}</span> قيد` : '<span class="badge">لم يُرفع</span>');
@@ -2659,7 +2668,7 @@ if (LOCK) {
     // a seeded month is refreshed when the built-in data changes; a month the viewer uploaded is kept
     const seedId = JSON.stringify(d).length + ':' + (d.payroll ? d.payroll.r.length : 0);
     const cur = store.months[m];
-    if (cur?.data && (!cur.seeded || cur.seeded === seedId)) continue;
+    if (cur?.data && (cur.seeded === seedId || (!cur.seeded && !CLOSED_MONTHS.has(m)))) continue;   // a closed month always takes the published data
     store.months[m] = { data: expandSeed(d), seeded: seedId };
     S = store.months[m].data; $('#month').value = m;   // compute reads the month (price list, archive fixes)
     store.history[m] = summary(compute());
