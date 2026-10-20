@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!--
+  HyperFrames composition: a fal plate (Seedance clip or GPT Image still) with set type in a reserved zone.
+  Replace plate.mp4, the copy and the zone; keep the zone equal to the one text_zone.py passed.
+  Faces are the "paper" look from looks/looks.json, loaded from the repo's OFL files.
+-->
+<style>
+  @font-face { font-family: "Instrument Serif"; src: url("../../../looks/fonts/InstrumentSerif.ttf"); }
+  @font-face { font-family: "Inter"; src: url("../../../looks/fonts/Inter.ttf"); font-weight: 100 900; }
+  :root {
+    --ground: #f8f8f6; --ink: #161616; --accent: #17a05e;
+    --display: "Instrument Serif", Georgia, serif;
+    --text: "Inter", system-ui, sans-serif;
+    /* type zone, px on the 1920×1080 frame: left two-fifths, upper-middle */
+    --zone-x: 128px; --zone-y: 300px; --zone-w: 760px;
+  }
+  html, body { margin: 0; background: #000; }
+  #film { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+  .plate { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .type { position: absolute; left: var(--zone-x); top: var(--zone-y); width: var(--zone-w); color: var(--ground); }
+  .eyebrow { font: 600 22px/1 var(--text); letter-spacing: .12em; text-transform: uppercase; color: var(--ground); opacity: .8; }
+  .eyebrow b { color: var(--accent); font-weight: 600; }
+  h1 { margin: 28px 0 0; font: 400 150px/0.95 var(--display); letter-spacing: -0.03em; }
+  .line { display: block; overflow: hidden; padding-bottom: 0.08em; }   /* the mask */
+  .line > span { display: inline-block; will-change: transform; }
+  .sub { margin: 36px 0 0; max-width: 30ch; font: 400 30px/1.35 var(--text); }
+</style>
+</head>
+<body>
+<div id="film" data-composition-id="title" data-start="0" data-width="1920" data-height="1080">
+
+  <video class="clip plate" src="plate.mp4" muted playsinline
+         data-start="0" data-duration="7.2" data-track-index="0"></video>
+
+  <div class="clip type" data-start="0" data-duration="7.2" data-track-index="1">
+    <div class="eyebrow"><b>●</b>&nbsp; Northwind Lamps</div>
+    <h1><span class="line"><span>Light that</span></span><span class="line"><span>stays late.</span></span></h1>
+    <p class="sub">Hand-thrown ceramic, walnut base, a warm 2,200 K glow.</p>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+  // Paused timeline; HyperFrames seeks it frame by frame.
+  const tl = gsap.timeline({ paused: true });
+  tl.from(".eyebrow", { y: 18, opacity: 0, duration: 0.5, ease: "power3.out" }, 0.4)
+    .from("h1 .line > span", { yPercent: 110, duration: 0.9, ease: "power4.out", stagger: 0.1 }, 0.55)
+    .from(".sub", { y: 14, opacity: 0, duration: 0.6, ease: "power3.out" }, 1.25)
+    // hold ≥ 0.5 s + words ÷ 3.5: 15 words → 4.8 s after the last element lands (~1.85 s), so exit at 6.7
+    .to(".type", { y: -10, opacity: 0, duration: 0.5, ease: "power2.in" }, 6.7);
+  window.__timelines = window.__timelines || {};
+  window.__timelines["title"] = tl;
+</script>
+</body>
+</html>
