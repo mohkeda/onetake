@@ -1,11 +1,13 @@
 """Filter the Claude project workbook down to one center, so a center-only project never sees the others.
-usage: python3 build_center_project.py <full.xlsx> <center name in Arabic> <out.xlsx>"""
+usage: python3 build_center_project.py <full.xlsx> <center name in Arabic> <out.xlsx> [sheet kept whole …]"""
 import sys, openpyxl
 src, center, out = sys.argv[1:4]
+KEEP = set(sys.argv[4:])
 wb = openpyxl.load_workbook(src)
 DROP = {'إجمالي الشركة'}
 for ws in list(wb.worksheets):
     if ws.title in DROP: wb.remove(ws); continue
+    if ws.title in KEEP: continue
     if ws.title in ('ملخص المتاجر',):
         # blocks: title row, header row, center rows, company rows — keep title, header and this center
         keep = [r for r in range(1, ws.max_row + 1) if ws.cell(r, 1).value in (center, 'المركز', None) or (ws.cell(r, 2).value is None and ws.cell(r, 1).value)]

@@ -1367,6 +1367,9 @@ const ARCHIVE_FROM_SALES = { '2026-08': ['exhibit', 'cpstore'] };
 // centers of that time), so the break-even reads on the same basis all year.
 const OWNER_DRAW_MONTHS = { '2026-04': 30000, '2026-05': 30000, '2026-06': 30000, '2026-07': 30000 };
 const OWNER_DRAW_CENTERS = ['exhibit', 'cpstore', 'hamtaro', 'wagy'];
+// service revenue of an old month replaced by the sales report (the old results file had June's entertainment figure in July);
+// delivery and cash-on-delivery are left out
+const ARCHIVE_SVC_FIX = { '2026-07': { exhibit: [['خدمات الترفيه', 25413.04 + 19745.22 + 125.22], ['خدمات الجروميج', 3232.17 + 800 + 13 + 2000 + 16.52 + 156.52 + 50], ['خدمات إضافية', 61.30]] } };
 function applyArchive(R, A) {
   const has = (t, ...ws) => ws.some(w => norm(t).includes(norm(w)));
   const withSales = !!S.sales?.length;   // the month's sales report was added: categories, costs and wholesale come from it
@@ -1379,7 +1382,9 @@ function applyArchive(R, A) {
     Object.assign(x, { revMain: 0, revBrand: 0, delIn: 0, delOut: 0, otherRev: 0, svcDiff: 0, cogsMain: 0, cogsWs: 0, fuelAlloc: 0, vehAlloc: 0, packAlloc: 0,
       admin: 0, expenses: 0, mainRev: 0, mainAdmin: 0, mainOp: 0, mainShare: 0, ordAll: 0, ordIn: 0, ordOut: 0, lines: [] });
     const fromSales = withSales && (ARCHIVE_FROM_SALES[$('#month')?.value] || []).includes(ce.id);
-    for (const [acc, v] of a?.rev || []) {
+    const svcFix = ARCHIVE_SVC_FIX[curMonthKey()]?.[ce.id];
+    const rev = svcFix ? [...(a?.rev || []).filter(([acc]) => !FUN_REV.test(norm(acc)) && !GROOM_REV.test(norm(acc))), ...svcFix] : a?.rev || [];
+    for (const [acc, v] of rev) {
       if (fromSales && has(acc, 'بدون بضاعه الجمله', 'مبيعات الجمله')) continue;
       if (has(acc, 'بدون بضاعه الجمله')) x.revMain += v;
       else if (has(acc, 'مبيعات الجمله')) x.revBrand += v;
