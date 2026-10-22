@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>نتائج المركز</title>
+<link rel="stylesheet" href="fonts_local.css">
+<style>
+:root { --bg: #f6f4ef; --card: #ffffff; --ink: #14201c; --ink2: #4b5a54; --muted: #8a948f; --line: #e4e1d8;
+  --brand: #0f6b5c; --good: #12805c; --bad: #c43d3d; --warn: #b7791f; --track: #ece9e1; --c: #1baf7a; }
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans Arabic", sans-serif; }
+.num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; display: inline-block; }
+#stage { position: absolute; inset: 0; overflow: hidden; }
+.band { position: absolute; top: 0; right: 0; left: 0; height: 14px; background: var(--c); }
+.top { position: absolute; top: 60px; right: 80px; left: 80px; display: flex; justify-content: space-between; align-items: center; }
+.top .brand { font-family: "Readex Pro"; font-weight: 700; font-size: 32px; color: var(--brand); }
+.top .chip { display: flex; align-items: center; gap: 14px; font-size: 30px; color: var(--ink2); }
+.top .chip i { width: 22px; height: 22px; border-radius: 7px; background: var(--c); display: inline-block; }
+.scene { position: absolute; inset: 0; padding: 200px 80px 200px; display: flex; flex-direction: column; justify-content: center; opacity: 0; }
+.eyebrow { font-size: 34px; color: var(--c); font-weight: 700; margin-bottom: 14px; letter-spacing: .5px; }
+h1 { font-family: "Readex Pro"; font-weight: 700; font-size: 120px; line-height: 1.12; }
+h2 { font-family: "Readex Pro"; font-weight: 700; font-size: 66px; line-height: 1.2; margin-bottom: 40px; }
+.lead { font-size: 40px; color: var(--ink2); line-height: 1.5; }
+.card { background: var(--card); border-radius: 32px; padding: 38px 44px; margin-bottom: 26px; box-shadow: 0 2px 0 var(--line), 0 18px 40px -28px rgba(20, 32, 28, .35); }
+.kpi .k { font-size: 34px; color: var(--ink2); }
+.kpi .v { font-size: 96px; font-weight: 700; line-height: 1.1; }
+.kpi .v small { font-size: 34px; color: var(--muted); font-weight: 500; margin-inline-start: 8px; }
+.kpi .d { font-size: 30px; margin-top: 6px; color: var(--muted); }
+.goal { margin-bottom: 44px; }
+.goal .row1 { display: flex; justify-content: space-between; align-items: center; font-size: 40px; }
+.goal .lbl { display: flex; align-items: center; gap: 16px; }
+.goal .row1 b { font-size: 50px; }
+.goal .tag { font-size: 26px; font-weight: 700; padding: 4px 16px; border-radius: 99px; white-space: nowrap; }
+.tag.ok { background: #dcefe7; color: var(--good); } .tag.no { background: #f8e7cc; color: var(--warn); }
+.track { position: relative; height: 40px; background: var(--track); border-radius: 99px; margin-top: 14px; overflow: hidden; }
+.fill { position: absolute; top: 0; bottom: 0; right: 0; border-radius: 99px; }
+.mark { position: absolute; top: -8px; bottom: -8px; width: 5px; background: var(--ink); border-radius: 3px; }
+.goal .row2 { font-size: 28px; color: var(--muted); margin-top: 10px; }
+.tip { display: flex; gap: 26px; align-items: flex-start; margin-bottom: 30px; }
+.tip .n { flex: none; width: 76px; height: 76px; border-radius: 24px; background: var(--c); color: #fff; font-family: "Readex Pro"; font-weight: 700; font-size: 40px; display: flex; align-items: center; justify-content: center; }
+.tip .t { font-size: 38px; line-height: 1.45; padding-top: 6px; }
+.net { font-size: 40px; font-weight: 700; margin-top: 10px; }
+.foot { position: absolute; bottom: 60px; right: 80px; left: 80px; font-size: 26px; color: var(--muted); display: flex; justify-content: space-between; }
+.prog { position: absolute; bottom: 0; right: 0; height: 10px; background: var(--c); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="band"></div>
+  <div class="top"><span class="brand">كيوت بيتس</span><span class="chip"><i></i><span id="cname"></span></span></div>
+  <div id="scenes"></div>
+  <div class="foot"><span>نتائج سبتمبر 2026 · أهداف أكتوبر</span><span>المبالغ بالريال</span></div>
+  <div class="prog" id="prog"></div>
+</div>
+<script>
+const D = /*DATA*/null;
+document.documentElement.style.setProperty('--c', D.color);
+document.getElementById('cname').textContent = D.name;
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const sgn = n => (n < 0 ? '−' : '') + fmt(Math.abs(n));
+const k = n => (Math.abs(n) >= 1000 ? (n / 1000).toFixed(1) + ' ألف' : fmt(n));
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = t => 1 - Math.pow(1 - clamp(t), 3);
+const $ = id => document.getElementById(id);
+const val = (g, v) => g.unit === 'riyal' ? `<span class="num">${(v / 1000).toFixed(1)}</span> ألف` : g.unit === 'x' ? `<span class="num">${v.toFixed(1)}</span> ريال` : g.unit === 'sar' ? `<span class="num">${v.toFixed(0)}</span> ريال` : g.unit === 'pct' ? `<span class="num">${v.toFixed(1)}%</span>` : `<span class="num">${fmt(v)}</span>`;
+const ok = g => g.dir > 0 ? g.v >= g.t : g.v <= g.t;
+
+// scenes: [id, duration, html]
+const S = [];
+S.push(['intro', 4, `<div class="eyebrow">النتائج الشهرية</div><h1 id="i1">${D.name}</h1><div class="lead" id="i2" style="margin-top:30px">سبتمبر 2026 · وين وصلنا، وكم هدفنا، وكيف نوصل</div>`]);
+const ch = (a, b) => b ? (a - b) / Math.abs(b) * 100 : 0;
+S.push(['res', 6, `<div class="eyebrow">١ · النتائج</div><h2>سبتمبر 2026</h2>
+  <div class="card kpi" id="r0"><div class="k">المبيعات</div><div class="v"><span class="num" id="rv0">0</span><small>ريال</small></div><div class="d">أغسطس <span class="num">${fmt(D.revAug)}</span> · <span class="num" style="color:${D.rev >= D.revAug ? 'var(--good)' : 'var(--bad)'}">${D.rev >= D.revAug ? '+' : '−'}${Math.abs(ch(D.rev, D.revAug)).toFixed(0)}%</span></div></div>
+  <div class="card kpi" id="r1"><div class="k">هامش مجمل الربح</div><div class="v"><span class="num" id="rv1">0</span></div><div class="d">أغسطس <span class="num">${D.gmAug.toFixed(1)}%</span></div></div>
+  <div class="card kpi" id="r2"><div class="k">صافي الربح</div><div class="v"><span class="num" id="rv2" style="color:${D.net >= 0 ? 'var(--good)' : 'var(--bad)'}">0</span><small>ريال</small></div><div class="d">${D.net >= 0 ? 'الفرع رابح' : 'الفرع خاسر'} · أغسطس <span class="num">${sgn(D.netAug)}</span></div></div>`]);
+const goalHTML = (list, pre) => list.map((g, i) => {
+  const good = ok(g), scale = Math.max(g.v, g.t) * 1.15;
+  return `<div class="goal" id="${pre}${i}"><div class="row1"><span class="lbl"><span>${g.label}</span><span class="tag ${good ? 'ok' : 'no'}">${good ? '✓ محقق' : 'نحتاج نوصل'}</span></span><b>${val(g, g.v)}</b></div>
+    <div class="track"><div class="fill" id="${pre}f${i}" style="background:${good ? 'var(--good)' : 'var(--c)'};width:0"></div><div class="mark" style="right:${g.t / scale * 100}%"></div></div>
+    <div class="row2">الهدف ${g.dir > 0 ? 'لا يقل عن' : 'لا يزيد عن'} ${val(g, g.t)}</div></div>`;
+}).join('');
+if (D.branch) S.push(['gb', 7, `<div class="eyebrow">٢ · أهداف الفرع</div><h2>وين وصلنا وكم الهدف</h2><div class="card">${goalHTML(D.branch, 'gb')}</div>`]);
+if (D.mkt) S.push(['gm', 7.5, `<div class="eyebrow">٣ · أهداف فريق التسويق</div><h2>الطلبات والإعلان والمزيج</h2><div class="card">${goalHTML(D.mkt, 'gm')}</div>`]);
+S.push(['tips', 9, `<div class="eyebrow">${D.branch ? (D.mkt ? '٤' : '٣') : '٢'} · كيف نوصل للهدف</div><h2>خطة أكتوبر</h2>${D.tips.map((t, i) => `<div class="tip" id="t${i}"><div class="n">${i + 1}</div><div class="t">${t}</div></div>`).join('')}`]);
+const salesG = D.branch && D.branch[0];
+S.push(['out', 4.5, `<div class="eyebrow">هدف أكتوبر</div><h1 style="font-size:96px" id="o1">${salesG ? `<span class="num">${(salesG.t / 1000).toFixed(0)}</span> ألف مبيعات` : 'نكمل بنفس القوة'}</h1>
+  <div class="lead" id="o2" style="margin-top:30px">${D.branch ? `إعلان لا يزيد عن <span class="num">${(D.branch[1].t / 1000).toFixed(1)}</span> ألف · كل ريال إعلان يجيب <span class="num">${D.branch[2].t.toFixed(0)}</span> ريال` : 'هامش 53% · زيادة عملاء الجملة والبراندات في المعرض'}</div>
+  <div class="net" id="o3" style="color:var(--c);margin-top:50px">فريق ${D.name} · نقدر نوصل 💪</div>`]);
+if (D.durs) D.durs.forEach((d, i) => { if (S[i]) S[i][1] = d; });   // timed to a voiceover
+let t0 = 0; const W = S.map(([id, dur, html]) => { const w = { id, a: t0, b: t0 + dur }; t0 += dur; return w; });
+const TOTAL = t0; window.TOTAL = TOTAL;
+$('scenes').innerHTML = S.map(([id, , html]) => `<section class="scene" id="s_${id}">${html}</section>`).join('');
+const stag = (el, l, i, step = .22) => { if (!el) return 0; const p = ease((l - .3 - i * step) / .5); el.style.opacity = p; el.style.transform = `translateY(${(1 - p) * 36}px)`; return p; };
+window.render = t => {
+  $('prog').style.width = (t / TOTAL * 100) + '%';
+  for (const w of W) {
+    const el = $('s_' + w.id), last = w === W[W.length - 1];
+    const a = t < w.a || t > w.b ? 0 : Math.min(ease((t - w.a) / .5), last ? 1 : clamp((w.b - t) / .4));
+    el.style.opacity = a; el.style.transform = `translateX(${(1 - a) * -40}px)`;
+    const l = t - w.a;
+    if (w.id === 'intro') { stag($('i1'), l, 0); stag($('i2'), l, 1, .4); }
+    if (w.id === 'res') {
+      [0, 1, 2].forEach(i => stag($('r' + i), l, i, .3));
+      const p = i => ease((l - .5 - i * .3) / 1.4);
+      $('rv0').textContent = fmt(D.rev * p(0)); $('rv1').textContent = (D.gm * p(1)).toFixed(1) + '%'; $('rv2').textContent = sgn(D.net * p(2));
+    }
+    for (const [pre, list] of [['gb', D.branch], ['gm', D.mkt]]) if (list && w.id === pre) list.forEach((g, i) => {
+      stag($(pre + i), l, i, .35); const scale = Math.max(g.v, g.t) * 1.15;
+      $(pre + 'f' + i).style.width = (g.v / scale * 100 * ease((l - .6 - i * .35) / 1.2)) + '%';
+    });
+    if (w.id === 'tips') D.tips.forEach((_, i) => stag($('t' + i), l, i, Math.max(.9, (w.b - w.a - 1) / D.tips.length)));
+    if (w.id === 'out') ['o1', 'o2', 'o3'].forEach((id, i) => stag($(id), l, i, .35));
+  }
+};
+render(+(new URLSearchParams(location.search).get('t') || 8));
+</script>
+</body>
+</html>
