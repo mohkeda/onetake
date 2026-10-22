@@ -2004,10 +2004,10 @@ function renderCatYear(pre, ids) {
 
 /* ---------- services: grooming and entertainment are separate revenue ---------- */
 const SVC_GROUPS = [
-  ['groom', 'إيراد الجرومنج', /ترويش|حلاق|دراي|شاور|استحمام|اظافر|اضافر|تمشيط|groom/],
-  ['fun', 'إيراد الترفيه (منطقة المرح)', /مرح|ترفيه|play/],
+  ['groom', 'إيراد الجرومنج', /ترويش|حلاق|دراي|شاور|استحمام|اظافر|اضافر|تمشيط|اسنان|groom/],
+  ['fun', 'إيراد الترفيه (منطقة المرح والصور)', /مرح|ترفيه|صور|play/],
   ['delivery', 'خدمات التوصيل والدفع عند الاستلام', /توصيل|الاستلام|cod/],
-  ['other', 'خدمات أخرى', /./],
+  ['other', 'خدمات إضافية (الدودة وغيرها)', /./],
 ];
 const svcGroup = name => SVC_GROUPS.find(g => g[2].test(norm(name)));
 // entertainment (play area) and grooming are their own revenue lines: the old results files carry them as lines; a statement
@@ -2018,7 +2018,7 @@ function splitServices(r) {
     const x = r.c[ce.id]; if (!x) continue;
     const split = !x.ordAll && Math.abs(x.svcDiff || 0) >= 0.5 ? svcSplit(ce.id, x.svcDiff) : null;
     if (split) {
-      const acc = { groom: 'خدمات الجروميج', fun: 'خدمات الترفيه', other: 'خدمات أخرى' };
+      const acc = { groom: 'خدمات الجروميج', fun: 'خدمات الترفيه', other: 'خدمات إضافية' };
       for (const g of SVC_GROUPS) { const v = split.find(([label]) => label === g[1]); if (v) x.lines.push({ account: acc[g[0]], cat: 'other', amount: v[1], src: 'حسب نسب تقرير المبيعات' }); }
       x.svcDiff = 0;
     }

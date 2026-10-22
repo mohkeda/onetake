@@ -98,7 +98,7 @@ if os.path.exists(AL):
     agg=collections.defaultdict(float)
     for a in A: agg[(a['month'],a['center'],a['platform'])]+=a['amount']
     sheet('الإعلانات حسب المنصة',['الشهر','الرمز','المركز','المنصة','المبلغ'],[[MNl(k[0]),k[0],k[1],k[2],round(v,2)] for k,v in sorted(agg.items())])
-    months=sorted({a['month'] for a in A}); plats=['جوجل','ميتا','سناب شات','تيك توك','واتساب','رواتب السوشيال ميديا','ثيو','مباشر على المركز (بدون منصة)','كاش باك درب']
+    months=sorted({a['month'] for a in A}); plats=['جوجل','ميتا','سناب شات','تيك توك','واتساب','رواتب السوشيال ميديا','تحسين محركات البحث (SEO)','مباشر على المركز (بدون منصة)','كاش باك درب']
     ws=sheet('ملخص الإعلانات',['المركز','المنصة']+[MNl(m) for m in months]+['الإجمالي'],[])
     for cen in ['هامتارو','كيوت بيتس','واجي','المعرض','الجملة','الرئيسي']:
         for p_ in plats:
