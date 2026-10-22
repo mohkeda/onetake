@@ -250,3 +250,5 @@ from the old results files' lines; from Sep the statement's single «ايراد 
 `gen_center_projects.py <full.xlsx> <out dir>` writes one project per center (workbook + guide that keeps the bot on that center;
 the wholesale project keeps the brands sheet whole, since the stores are its customers).
 July 2026's exhibit service revenue is replaced from the sales report (`ARCHIVE_SVC_FIX`): the old results file carried June's figure.
+`proj.mjs` (numbers per month and center) and `cards.mjs` (every report table as shown on the page) read the published
+dashboard; `build_project.py` turns both into the project workbook, so every table of the report is also a sheet.

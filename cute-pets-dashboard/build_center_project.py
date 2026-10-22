@@ -18,5 +18,7 @@ for ws in list(wb.worksheets):
         keep = [1] + [r for r in range(2, ws.max_row + 1) if ws.cell(r, col).value == center]
     for r in range(ws.max_row, 0, -1):
         if r not in keep: ws.delete_rows(r)
+for ws in list(wb.worksheets):
+    if ws.max_row <= 1: wb.remove(ws)   # nothing left for this center
 wb.save(out)
 print('saved', [w.title for w in wb.worksheets])

@@ -137,4 +137,45 @@ if os.path.exists(GM):
                 for c,n in e['n'].items():
                     if n: rows.append([ml(m),m,N[c],e['name'],n,round(e['f'].get(c,0),2)])
         sheet(title,['الشهر','الرمز','المركز',col,'عدد الطلبات','إيراد التوصيل'],rows)
+# the dashboard's other report tables, as shown on the page for every month (cards.json from cards.mjs)
+CJ=SP+'/cards.json'
+if os.path.exists(CJ):
+    import re
+    D=json.load(open(CJ)); last=max(D)
+    def num(v):
+        t=v.replace(',','').replace('−','-').strip()
+        return float(t) if re.fullmatch(r'-?\d+(\.\d+)?',t) else v
+    def isHead(r): return not any(isinstance(num(v),float) for v in r[1:])
+    MONTHNAME=re.compile(r'^(يناير|فبراير|مارس|أبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر|الإجمالي \()')
+    STORE={'كيوت':'cpstore','هامتارو':'hamtaro','واجي':'wagy','المحل':'exhibit','المعرض':'exhibit','محمد عاطف':'hamtaro'}
+    def who(cell):
+        for k,c in STORE.items():
+            if k in cell: return N[c]
+        return 'كل المتاجر'
+    # company-page tables: the center is named in the row
+    for title,sh in [('العمولات المستحقة عن الشهر','العمولات المستحقة'),('التوصيل ونسب التحمل','التوصيل ونسب التحمل')]:
+        rows=[]; head=None
+        for m in sorted(D):
+            t=D[m]['all'].get(title)
+            if not t: continue
+            for r in t['rows']:
+                if head is None and isHead(r): head=r; continue
+                if isHead(r) or r[0]=='الإجمالي': continue
+                rows.append([ml(m),m,who(' '.join(r[:2]))]+[num(v) for v in r])
+        if head: sheet(sh,['الشهر','الرمز','المركز']+head,rows)
+    # center-page tables: one sheet each, raw rows (a row without numbers is a sub-header)
+    for title,sh in [('التوصيل والمصاريف المحمّلة','التوصيل والمصاريف المحمّلة'),('نقطة التعادل وربحية التصنيفات','التعادل وربحية التصنيفات'),
+                     ('إيرادات الخدمات','إيرادات الخدمات - تفصيل'),('تقرير مبيعات الجملة','تقرير مبيعات الجملة'),
+                     ('تكلفة بضاعة الجملة حسب القسم','تكلفة الجملة حسب القسم'),('أصناف بسعر جملة تقديري','أصناف بسعر جملة تقديري'),
+                     ('مقارنة المراكز في بيع البراندات','مقارنة المراكز في البراندات')]:
+        rows=[]; w=0
+        for m in sorted(D):
+            for c in C:
+                t=D[m].get(c,{}).get(title)
+                if not t: continue
+                for k in t['kpis']: rows.append([ml(m),m,N[c],'مؤشر',k[0],num(k[1] or ''),k[2] or ''])
+                for r in t['rows']:
+                    if MONTHNAME.match(r[0]) and m!=last: continue   # the month-by-month history is kept once, from the last month
+                    rows.append([ml(m),m,N[c],'عنوان' if isHead(r) else 'بيان']+[num(v) for v in r]); w=max(w,len(r))
+        if rows: sheet(sh,['الشهر','الرمز','المركز','نوع الصف']+[f'عمود {i+1}' for i in range(max(w,3))],rows)
 wb.save(OUT); print('saved',[w.title for w in wb.worksheets])
