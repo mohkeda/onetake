@@ -47,7 +47,7 @@ for name, c in CENTERS.items():
     adhdr = [h.value for h in wb['ملخص الإعلانات'][1]]; i9 = adhdr.index('سبتمبر 2026')
     adtxt = ' · '.join(f'{r[1]} {fm(sum(v or 0 for v in r[2:i9 + 1]))}' for r in sorted(ads, key=lambda r: -sum(v or 0 for v in r[2:i9 + 1])) if r[1] != 'إجمالي المركز' and abs(sum(v or 0 for v in r[2:i9 + 1])) >= 1)
     adtot = next((sum(v or 0 for v in r[2:i9 + 1]) for r in ads if r[1] == 'إجمالي المركز'), 0)
-    goals = [r for r in wb['أهداف الشهر'].iter_rows(min_row=2, values_only=True) if r[0] == name]
+    goals = [r for r in wb['أهداف الشهر'].iter_rows(min_row=2, values_only=True) if r[0] == name] if 'أهداف الشهر' in wb.sheetnames else []
     gtxt = '\n'.join(f'| {g[1]} | {g[2]} | {g[3]} {fm(g[4]) if g[4] >= 100 else g[4]} | {fm(g[5]) if g[5] >= 100 else round(g[5], 2)} | {g[6]} |' for g in goals)
     md = f"""# دليل بيانات {name} — نتائج 2026 (يناير–سبتمبر)
 
