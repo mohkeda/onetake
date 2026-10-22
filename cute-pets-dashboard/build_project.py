@@ -80,9 +80,20 @@ sheet('بنود قائمة الدخل',['الشهر','الرمز','المركز'
 rows=[]
 for m in ms:
     for c in C:
-        for k,v in d[m][c]['cats'].items():
-            cost=d[m][c]['catCost'].get(k); rows.append([ml(m),m,N[c],k.strip(),v,cost if cost is not None else '',(v-cost) if cost is not None else ''])
-sheet('مبيعات الأقسام',['الشهر','الرمز','المركز','القسم','المبيعات','التكلفة','مجمل الربح'],rows)
+        tot=sum(d[m][c]['cats'].values()) or 1
+        for k,v in sorted(d[m][c]['cats'].items(),key=lambda kv:-kv[1]):
+            cost=d[m][c]['catCost'].get(k); rows.append([ml(m),m,N[c],k.strip(),v,round(v/tot*100,2),cost if cost is not None else '',(v-cost) if cost is not None else '',round((v-cost)/v*100,2) if cost is not None and v else ''])
+sheet('مبيعات الأقسام',['الشهر','الرمز','المركز','القسم','المبيعات','النسبة من مبيعات المركز %','التكلفة','مجمل الربح','هامش مجمل الربح %'],rows)
+# break-even (as on the dashboard): variable = cost of goods + selling costs that move with sales; fixed = the rest (ads included)
+rows=[]
+for m in ms:
+    for c in C:
+        if c=='wholesale': continue
+        b=d[m][c]['summary']; rev=b['revenue']; var=b['variable']; fx=b['fixed']; ads=b['ads']
+        if not rev: continue
+        cm=rev-var; cmr=cm/rev; be=fx/cmr if cmr>0 else None
+        rows.append([ml(m),m,N[c],rev,var,round(var/rev*100,2),cm,round(cmr*100,2),fx,ads,be if be else 'لا يتعادل',round(rev/be*100,1) if be else '',(rev-be) if be else '',b['beNet'],round(ads/rev*100,2),round(rev/ads,2) if ads else ''])
+sheet('نقطة التعادل ومؤشرات الإعلان',['الشهر','الرمز','المركز','الإيرادات','التكاليف المتغيرة','المتغيرة % من الإيرادات','هامش المساهمة','نسبة هامش المساهمة %','التكاليف الثابتة','منها الدعاية','إيرادات نقطة التعادل','الإيرادات ÷ نقطة التعادل %','هامش الأمان (الإيرادات − التعادل)','صافي قبل العمولة والضريبة','الإعلان % من الإيرادات','كل ريال إعلان يجيب (MER)'],rows)
 B={'kaniva':'كانيفا','ronron':'رون رون','sherman':'شيرمان','candy':'كاندي'}; rows=[]
 for m in ms:
     for c,o in (d[m]['wholesale']['matrix'] or {}).items():
@@ -114,4 +125,16 @@ if os.path.exists(AL):
         for x in row:
             if isinstance(x.value,(int,float)): x.number_format='#,##0;[Red]-#,##0'
 
+# online orders by city and by Riyadh district (from Salla's orders): order count and delivery revenue
+GM=SP+'/orders26/geo_months.json'; GS=SP+'/geo/orders_geo_sep.json'
+if os.path.exists(GM):
+    G=json.load(open(GM))
+    if os.path.exists(GS): G['2026-09']=json.load(open(GS))
+    for key,title,col in [('cities','الطلبات حسب المدينة','المدينة'),('districts','الطلبات حسب الحي (الرياض)','الحي')]:
+        rows=[]
+        for m in sorted(G):
+            for e in sorted(G[m].get(key,[]),key=lambda e:-sum(e['n'].values())):
+                for c,n in e['n'].items():
+                    if n: rows.append([ml(m),m,N[c],e['name'],n,round(e['f'].get(c,0),2)])
+        sheet(title,['الشهر','الرمز','المركز',col,'عدد الطلبات','إيراد التوصيل'],rows)
 wb.save(OUT); print('saved',[w.title for w in wb.worksheets])
