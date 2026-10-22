@@ -1339,6 +1339,7 @@ function compute() {
   R = { c, geo, ws, cats, catCost, svcs, giftCost, mode, mainAllocated, mainPool, pay, salariesReplaced, fixedReplaced, payrollMissing: !hasPayroll && !!(S.is?.rows?.length), xfer: hasSales && mode === 'transfer', hasOrders, hasSales, hasIS: !!(S.is?.rows?.length), totIn, totAll, fuelTotal, packTotal, fuelIS, packIS, cancelled, unknownStores,
         fuelPerOrder: totIn ? fuelTotal / totIn : 0, packPerOrder: totAll ? packTotal / totAll : 0 };
   if (S.archive && !S.is) applyArchive(R, S.archive);
+  splitServices(R);
   applyTax(R);
   return R;
 }
@@ -1615,6 +1616,7 @@ function renderResults() {
     ['خدمات الشحن الخارجي', 'delOut', 'indent'],
     ['إيراد التوصيل داخل الرياض', 'delIn', 'indent'],
     ['إيرادات أخرى', 'otherRev', 'indent'],
+    ...(CENTERS.some(ce => r.c[ce.id].funRev) ? [['↳ منها الترفيه (منطقة المرح)', 'funRev', 'indent2'], ['↳ منها الجرومنج', 'groomRev', 'indent2']] : []),
     ...(r.mainAllocated && CENTERS.some(ce => Math.abs(r.c[ce.id].mainRev || 0) >= 0.5) ? [['حصة الرئيسي من الإيرادات', 'mainRev', 'indent']] : []),
     ['إجمالي الإيرادات', 'revenue', 'sub'],
     ['ثانياً: المصروفات', null, 'head'],
@@ -2008,6 +2010,22 @@ const SVC_GROUPS = [
   ['other', 'خدمات أخرى', /./],
 ];
 const svcGroup = name => SVC_GROUPS.find(g => g[2].test(norm(name)));
+// entertainment (play area) and grooming are their own revenue lines: the old results files carry them as lines; a statement
+// month's single service revenue is split by the shares in the sales report into the same lines
+const FUN_REV = /ترفيه|مرح/, GROOM_REV = /جروم/;
+function splitServices(r) {
+  for (const ce of CENTERS) {
+    const x = r.c[ce.id]; if (!x) continue;
+    const split = !x.ordAll && Math.abs(x.svcDiff || 0) >= 0.5 ? svcSplit(ce.id, x.svcDiff) : null;
+    if (split) {
+      const acc = { groom: 'خدمات الجروميج', fun: 'خدمات الترفيه', other: 'خدمات أخرى' };
+      for (const g of SVC_GROUPS) { const v = split.find(([label]) => label === g[1]); if (v) x.lines.push({ account: acc[g[0]], cat: 'other', amount: v[1], src: 'حسب نسب تقرير المبيعات' }); }
+      x.svcDiff = 0;
+    }
+    const sum = re => (x.lines || []).filter(l => l.cat === 'other' && re.test(norm(l.account))).reduce((a, l) => a + l.amount, 0);
+    x.funRev = sum(FUN_REV); x.groomRev = sum(GROOM_REV);
+  }
+}
 // split a center's service revenue (from the statement) by the shares in the sales report
 function svcSplit(cid, total) {
   const SV = R.svcs[cid]; if (!SV) return null;

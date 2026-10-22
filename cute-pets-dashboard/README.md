@@ -238,3 +238,12 @@ GOALS: لكل مركز (المعرض، كيوت، هامتارو، واجي) س�
 
 ## الضريبة (من 15/10/2026، على كل الأشهر)
 الوعاء الضريبي = صافي ربح الشركة، وكل مركز يساهم فيه بصافيه ربحاً أو خسارة: ضريبة المركز = 20% × صافيه (الخسارة = وفر ضريبي سالب، يظهر «وفر ضريبي من خسارة المركز»). ضريبة الـ 30,000 المضافة (6,000) على مستوى الشركة. الإجمالي لا يتغير: 20% × (مجموع الصافي + 30,000).
+
+### Exhibit services: entertainment and grooming
+Entertainment (play area) and grooming are separate revenue lines (`funRev`, `groomRev`, both part of `otherRev`). Jan–Aug come
+from the old results files' lines; from Sep the statement's single «ايراد الخدمات» is split by the sales report's shares
+(`splitServices` → lines «خدمات الترفيه», «خدمات الجروميج», «خدمات أخرى»). The P&L shows them under «إيرادات أخرى».
+
+### Claude project files
+`build_project.py` builds the workbook (incl. the ads ledger `ads_ledger_2026.json`, per platform);
+`build_center_project.py <full.xlsx> <center> <out.xlsx>` filters it to one center for a center-only project.

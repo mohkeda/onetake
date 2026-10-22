@@ -59,9 +59,9 @@ rows=[]
 for m in ms:
     for c in C:
         x=d[m][c]['x']; s=d[m][c]['summary'] or {}
-        rows.append([ml(m),m,N[c],x.get('revMain',0),x.get('revBrand',0),x.get('delivery',0),x.get('otherRev',0),x.get('revenue',0),x.get('cogs',0),x.get('gross',0),x.get('adminT',0),x.get('totalExp',0)-x.get('adminT',0)-x.get('cogs',0),x.get('netBeforeMgr',x.get('net',0)),x.get('mgrComm',0),x.get('net',0),x.get('tax',0),x.get('netAfter',x.get('net',0)),s.get('variable',0),s.get('fixed',0),s.get('ads',0)])
+        rows.append([ml(m),m,N[c],x.get('revMain',0),x.get('revBrand',0),x.get('delivery',0),x.get('otherRev',0),x.get('funRev',0),x.get('groomRev',0),x.get('revenue',0),x.get('cogs',0),x.get('gross',0),x.get('adminT',0),x.get('totalExp',0)-x.get('adminT',0)-x.get('cogs',0),x.get('netBeforeMgr',x.get('net',0)),x.get('mgrComm',0),x.get('net',0),x.get('tax',0),x.get('netAfter',x.get('net',0)),s.get('variable',0),s.get('fixed',0),s.get('ads',0)])
     t=d[m]['main']['x'].get('tax',0); rows.append([ml(m),m,'فرق ضريبة الشركة (على الرئيسي)']+[0]*12+[t,-t,0,0,0])
-sheet('النتائج الشهرية',['الشهر','الرمز','المركز','مبيعات بدون الجملة','مبيعات براندات الجملة','إيراد التوصيل','إيرادات أخرى','إجمالي الإيرادات','تكلفة البضاعة','مجمل الربح','المصاريف الإدارية','المصاريف التشغيلية (بدون التكلفة)','صافي قبل عمولة المدير','عمولة المدير','صافي قبل الضريبة','الضريبة','صافي بعد الضريبة','تكاليف متغيرة','تكاليف ثابتة','الدعاية'],rows)
+sheet('النتائج الشهرية',['الشهر','الرمز','المركز','مبيعات بدون الجملة','مبيعات براندات الجملة','إيراد التوصيل','إيرادات أخرى','منها الترفيه (منطقة المرح)','منها الجرومنج','إجمالي الإيرادات','تكلفة البضاعة','مجمل الربح','المصاريف الإدارية','المصاريف التشغيلية (بدون التكلفة)','صافي قبل عمولة المدير','عمولة المدير','صافي قبل الضريبة','الضريبة','صافي بعد الضريبة','تكاليف متغيرة','تكاليف ثابتة','الدعاية'],rows)
 rows=[]
 for m in ms:
     rev=sum(d[m][c]['x']['revenue'] for c in C); g=sum(d[m][c]['x']['gross'] for c in C); n=sum(d[m][c]['x']['net'] for c in C)
@@ -88,4 +88,30 @@ for m in ms:
     for c,o in (d[m]['wholesale']['matrix'] or {}).items():
         for b,v in o.items(): rows.append([ml(m),m,N.get(c,c),B.get(b,b),v.get('qty',0),v.get('sales',0),v.get('wh',0),v.get('imp',0)])
 sheet('البراندات حسب المركز',['الشهر','الرمز','المركز','البراند','الكمية','مبيعات المتجر للعميل','قيمة الجملة (سعر القائمة)','تكلفة الاستيراد'],rows)
+
+# ad spend by cost center (Edara ledger of the ads account)
+import os, collections
+AL=SP+'/ads_ledger.json'
+if os.path.exists(AL):
+    A=json.load(open(AL)); MNl=lambda m: ml(m)
+    sheet('الإعلانات - تفصيل القيود',['التاريخ','الشهر','المركز','المنصة','مركز التكلفة في إدارة','المبلغ','رقم القيد','البيان'],[[a['date'],MNl(a['month']),a['center'],a['platform'],a['cc'],a['amount'],a['doc'],a['note']] for a in A])
+    agg=collections.defaultdict(float)
+    for a in A: agg[(a['month'],a['center'],a['platform'])]+=a['amount']
+    sheet('الإعلانات حسب المنصة',['الشهر','الرمز','المركز','المنصة','المبلغ'],[[MNl(k[0]),k[0],k[1],k[2],round(v,2)] for k,v in sorted(agg.items())])
+    months=sorted({a['month'] for a in A}); plats=['جوجل','ميتا','سناب شات','تيك توك','واتساب','رواتب السوشيال ميديا','ثيو','مباشر على المركز (بدون منصة)','كاش باك درب']
+    ws=sheet('ملخص الإعلانات',['المركز','المنصة']+[MNl(m) for m in months]+['الإجمالي'],[])
+    for cen in ['هامتارو','كيوت بيتس','واجي','المعرض','الجملة','الرئيسي']:
+        for p_ in plats:
+            vals=[round(agg.get((m,cen,p_),0),2) for m in months]
+            if any(vals): ws.append([cen,p_]+vals+[round(sum(vals),2)])
+        tot=[round(sum(v for k,v in agg.items() if k[0]==m and k[1]==cen),2) for m in months]
+        if any(tot):
+            ws.append([cen,'إجمالي المركز']+tot+[round(sum(tot),2)])
+            for c in ws[ws.max_row]: c.font=Font(bold=True)
+    tot=[round(sum(v for k,v in agg.items() if k[0]==m),2) for m in months]; ws.append(['الشركة','إجمالي الإعلانات']+tot+[round(sum(tot),2)])
+    for c in ws[ws.max_row]: c.font=Font(bold=True)
+    for row in ws.iter_rows():
+        for x in row:
+            if isinstance(x.value,(int,float)): x.number_format='#,##0;[Red]-#,##0'
+
 wb.save(OUT); print('saved',[w.title for w in wb.worksheets])
