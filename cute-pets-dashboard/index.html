@@ -919,11 +919,12 @@ const FIXED_DEFAULT = [
 // a list saved in the browser keeps its edits; items added to the defaults later are appended to it
 const fixedList = () => { const L = store.settings.fixed5; return L ? [...L, ...FIXED_DEFAULT.filter(d => !L.some(f => f.name === d.name))] : FIXED_DEFAULT; };
 // Al Rajhi loan (625,000, 24 installments of 31,810.07 on the 15th). The expense is the profit part of the
-// month's installment («خدمة القرض»), split equally on the exhibit, Cute and Hamtaro as before; the principal is not an expense.
+// month's installment («خدمة القرض»), split equally on the exhibit, Cute and Hamtaro (and wholesale from October 2026); the principal is not an expense.
 const LOAN_PROFIT = { '2026-09': 7043.14, '2026-10': 6413.73, '2026-11': 6201.35, '2026-12': 5585.43, '2027-01': 5331.53, '2027-02': 4887.20,
   '2027-03': 4006.17, '2027-04': 3968.82, '2027-05': 3388.66, '2027-06': 3024.68, '2027-07': 2459.64, '2027-08': 2249.10, '2027-09': 1549.68,
   '2027-10': 1008.27, '2027-11': 525.03 };
-const LOAN_CENTERS = ['exhibit', 'cpstore', 'hamtaro'];
+// from October 2026 the wholesale center carries a quarter as well
+const loanCenters = mo => (mo >= '2026-10' ? ['exhibit', 'cpstore', 'hamtaro', 'wholesale'] : ['exhibit', 'cpstore', 'hamtaro']);
 // Workbook months whose loan line was copied from the month before: corrected to the schedule (January and
 // February also carried a second loan and stay as booked; March, April and June already match).
 const LOAN_FIX = { '2026-05': 8367.85, '2026-07': 7604.60, '2026-08': 7451.89 };
@@ -1077,7 +1078,7 @@ function compute() {
 
   if (isRows.length) {
     const loan = LOAN_PROFIT[curMonthKey()];
-    if (loan) for (const cid of LOAN_CENTERS) { c[cid].admin += loan / LOAN_CENTERS.length; c[cid].lines.push({ account: 'خدمة القرض', cat: 'admin', amount: loan / LOAN_CENTERS.length }); }
+    if (loan) { const LC = loanCenters(curMonthKey()); for (const cid of LC) { c[cid].admin += loan / LC.length; c[cid].lines.push({ account: 'خدمة القرض', cat: 'admin', amount: loan / LC.length }); } }
     for (const f of fixedList()) for (const [cid, v] of Object.entries(f.by || {})) if (v && c[cid]) {
       c[cid].admin += v; c[cid].lines.push({ account: f.name, cat: 'admin', amount: v });
     }
