@@ -476,7 +476,7 @@ const BRANDS = [
   { id: 'kaniva',  name: 'كانيفا',  keys: ['كانيفا', 'كنيفا', 'kaniva', 'kanniva', 'caniva'] },
   { id: 'ronron',  name: 'رون رون', keys: ['رون رون', 'رونرون', 'ronron', 'ron ron'] },
   { id: 'sherman', name: 'شيرمان',  keys: ['شيرمان', 'sherman'] },
-  { id: 'candy',   name: 'كاندي',   keys: ['كاندي', 'candy', 'kandy'] },
+  { id: 'candy',   name: 'كاندي',   keys: ['كاندي', 'candy', 'kandy'], not: /لعب/ },   // «لعبه على شكل كاندي» is a toy, not the brand
 ];
 // Wholesale cost list by product line, prices before VAT: [line, items, per piece, per carton].
 // This is what a store pays wholesale; Edara's sales reports carry the import cost.
@@ -615,7 +615,7 @@ function matchCenter(text) {
 function matchBrand(text) {
   const t = norm(text);
   if (!t) return null;
-  for (const b of BRANDS) if (b.keys.some(k => t.includes(norm(k)))) return b.id;
+  for (const b of BRANDS) if (b.keys.some(k => t.includes(norm(k))) && !(b.not && b.not.test(t))) return b.id;
   return null;
 }
 function classify(account, group) {
