@@ -1157,7 +1157,10 @@ function compute() {
     }
     x.svcDiff = 0;
     if (!(hasOrders && set.deliverySource === 'orders')) { x.delIn = x.delInIS; x.delOut = x.delOutIS; }
-    else {
+    else if (!S.is?.rows?.length) {
+      // no statement yet: the orders are the only source, so their fees stand as the delivery revenue
+      if (ce.delivery) x.delIn += x.cod; else if (x.cod) x.lines.push({ account: 'ايراد الدفع عند الاستلام', cat: 'other', amount: x.cod });
+    } else {
       // the cash-on-delivery fee (Salla) is its own revenue line; what is left is the difference from Edara
       x.cod = Math.min(x.cod, Math.max(0, x.delInIS + x.delOutIS - x.delIn - x.delOut));
       if (x.cod && !ce.delivery) x.lines.push({ account: 'ايراد الدفع عند الاستلام', cat: 'other', amount: x.cod });
