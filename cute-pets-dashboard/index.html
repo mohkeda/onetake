@@ -699,6 +699,7 @@ const FIELDS = {
     ['fee', 'رسوم التوصيل', ['تكلفه الشحن', 'رسوم التوصيل', 'قيمه التوصيل', 'رسوم الشحن', 'قيمه الشحن', 'التوصيل', 'الشحن', 'shipping', 'delivery']],
     ['status', 'الحالة', ['حاله الطلب', 'الحاله', 'status']],
     ['ship', 'يتطلب شحن', ['يتطلب شحن', 'requires shipping']],
+    ['carrier', 'شركة الشحن', ['شركه الشحن', 'شركه الشحن / الفرع', 'carrier', 'shipping company']],
     ['addr', 'عنوان العميل', ['عنوان العميل', 'العنوان']],
     ['maplink', 'رابط الموقع', ['رابط موقع العميل علي الخريطه', 'رابط الموقع']],
   ],
@@ -833,7 +834,7 @@ function parseTable(kind, aoa, mapOverride) {
     if (kind === 'orders') {
       const status = norm(get(r, 'status'));
       const ship = norm(get(r, 'ship'));
-      rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), fee: toNum(get(r, 'fee')), cod: toNum(get(r, 'cod')),
+      rows.push({ store: String(get(r, 'store')), city: String(get(r, 'city')), carrier: String(get(r, 'carrier')), fee: toNum(get(r, 'fee')), cod: toNum(get(r, 'cod')),
         cancelled: /ملغ|الغاء|محذوف|مسترجع|مرتجع|بانتظار الدفع|cancel|deleted|refund/.test(status),
         pickup: ship === 'لا' || ship === 'no', ...geoOf(get(r, 'addr'), get(r, 'maplink')) });
     } else if (kind === 'sales') {
@@ -1113,6 +1114,7 @@ function compute() {
   }
 
   // Orders
+  const CARRIER_AS_OUTSIDE = /ريدبوكس|ريد بوكس|redbox|red box/;
   const riy = set.riyadh.split(/[,،]/).map(norm).filter(Boolean);
   const unknownStores = {};
   let cancelled = 0;
@@ -1127,7 +1129,8 @@ function compute() {
     const x = c[cid];
     x.cod += o.cod || 0;
     if (o.pickup) { x.ordPick++; continue; }
-    if (riy.some(k => norm(o.city).includes(k))) { x.ordIn++; x.delIn += o.fee; } else { x.ordOut++; x.delOut += o.fee; }
+    // a shipping company's delivery inside Riyadh (RedBox lockers) is shipping revenue, not our drivers' delivery
+    if (riy.some(k => norm(o.city).includes(k)) && !CARRIER_AS_OUTSIDE.test(norm(o.carrier || ''))) { x.ordIn++; x.delIn += o.fee; } else { x.ordOut++; x.delOut += o.fee; }
   }
   for (const ce of CENTERS) { const x = c[ce.id]; x.ordAll = x.ordIn + x.ordOut + x.ordPick; }
   const geo = buildGeo(orderFiles, riy) || S.geoAgg || null;   // published months carry the area totals only

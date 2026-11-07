@@ -257,3 +257,7 @@ dashboard; `build_project.py` turns both into the project workbook, so every tab
 In «مدخلات الشهر» upload Tayar's combined drivers report: delivered orders of the selected month are counted per store
 (column «المتجر») and driver (`readDriversReport`). A driver on leave whose account a colleague used is set in the
 swap fields (account, colleague, from day, to day) before uploading; those days count for the colleague.
+
+### RedBox inside Riyadh
+Salla's «شركة الشحن» column is read with the orders. An order delivered by RedBox (lockers) inside Riyadh counts as
+outside-Riyadh shipping (delOut, ordOut): it is a shipping company's delivery, not our drivers', so it carries no fuel share.
