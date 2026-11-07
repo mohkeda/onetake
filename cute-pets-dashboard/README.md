@@ -261,3 +261,8 @@ swap fields (account, colleague, from day, to day) before uploading; those days 
 ### RedBox inside Riyadh
 Salla's «شركة الشحن» column is read with the orders. An order delivered by RedBox (lockers) inside Riyadh counts as
 outside-Riyadh shipping (delOut, ordOut): it is a shipping company's delivery, not our drivers', so it carries no fuel share.
+
+### Monthly sales pivot without classification
+The short Edara pivot (Stock.item, ItemCode, Sales.store, sales, cost) has no category or brand column. `CODE_INFO`
+fills them from the item code (categories and service names taken from the Sep–Oct 2026 reports); a service row shows
+as «ServiceItem» and is named by its code. Brands are still matched by item name. Unknown codes go to «غير مصنف».
