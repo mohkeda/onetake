@@ -433,7 +433,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
       </div>
 
       <div class="card">
-        <div class="card-head"><h2>مدخلات الشهر من الفواتير والتقارير</h2><p>المحروقات الفعلية (فاتورة PetroApp قبل الضريبة)، فواتير منصة طيار، والطلبات المسلَّمة لكل سواق من «تقرير مستحقات الطيارين» لكل متجر. تحل محل نفس البنود في قائمة الدخل</p></div>
+        <div class="card-head"><h2>مدخلات الشهر من الفواتير والتقارير</h2><p>المحروقات الفعلية (فاتورة PetroApp قبل الضريبة)، فواتير منصة طيار، والطلبات المسلَّمة لكل سواق: ارفع تقرير السواقين المجمّع من طيار (فيه عمود المتجر) فتُعبّأ تلقائياً، أو أدخلها يدوياً. تحل محل نفس البنود في قائمة الدخل</p></div>
         <div class="table-wrap" id="manualInputs"></div>
       </div>
 
@@ -2346,6 +2346,27 @@ function renderBrandCenters() {
   lineChart($('#chartBrandYear'), months, ycids.map(id => ({ id, label: CMAP[id].short, color: CMAP[id].color, values: months.map(k => val(k, id)) })), { W: 1100, H: 300, label: 'مبيعات البراندات لكل مركز شهرياً' });
 }
 
+// Tayar's drivers report (one file for all stores): delivered orders of the month per store and driver.
+// A driver's account used by a colleague during leave (swap) counts for the colleague on those days.
+function readDriversReport(aoa, month, swap, fileName) {
+  const hi = aoa.findIndex(r => r.some(c => norm(c) === norm('اسم السائق')) && r.some(c => norm(c) === norm('المتجر')));
+  if (hi < 0) throw new Error('لا يوجد عمودا «اسم السائق» و«المتجر»');
+  const H = aoa[hi].map(norm), col = (...ns) => H.findIndex(h => ns.some(n => h === norm(n)));
+  const cD = col('اسم السائق'), cS = col('المتجر'), cSt = col('حالة الطلب'), cT = col('تاريخ تسليم الطلب'), cC = col('تاريخ إنشاء الطلب');
+  const ymd = v => v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').slice(0, 10);
+  const drivers = {}; let n = 0, swapped = 0;
+  for (const r of aoa.slice(hi + 1)) {
+    if (cSt >= 0 && norm(r[cSt]) !== norm('تم التوصيل')) continue;
+    const d = ymd(r[cT] || r[cC]); if (d.slice(0, 7) !== month) continue;
+    const cid = matchCenter(r[cS]); if (!cid || !CMAP[cid]?.delivery) continue;
+    let name = String(r[cD] || '').trim(); if (!name) continue;
+    const day = +d.slice(8, 10);
+    if (swap && swap.from && swap.to && norm(name) === norm(swap.from) && (!swap.d1 || day >= swap.d1) && (!swap.d2 || day <= swap.d2)) { name = swap.to; swapped++; }
+    (drivers[cid] = drivers[cid] || {})[name] = (drivers[cid][name] || 0) + 1; n++;
+  }
+  if (!n) throw new Error('لا توجد طلبات مسلَّمة في هذا الشهر');
+  return { drivers, driverNames: [...new Set(Object.values(drivers).flatMap(o => Object.keys(o)))], driverReport: { fileName, n, swapped } };
+}
 function renderManualInputs() {
   const el = $('#manualInputs'); if (!el) return;
   if (S.archive && !S.is) { el.innerHTML = '<div class="empty">شهر مقفل مستورد من ملف النتائج: لا مدخلات</div>'; return; }
@@ -2353,7 +2374,21 @@ function renderManualInputs() {
   const names = [...new Set([...Object.values(DR).flatMap(o => Object.keys(o)), ...(S.manual?.driverNames || [])])];
   if (!names.length) names.push('');
   const inp = (attrs, v, w = 100) => `<input type="number" step="0.01" min="0" ${attrs} value="${v ?? ''}" style="width:${w}px">`;
-  el.innerHTML = `<table><tbody>
+  const SW = manualOf().driverSwap || {}, RP = manualOf().driverReport;
+  el.innerHTML = `<div class="controls" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;align-items:center">
+      <label class="btn small" for="file-drivers">رفع تقرير السواقين (طيار)</label><input type="file" id="file-drivers" accept=".xlsx,.xls,.csv" hidden>
+      <span class="note" id="drvStatus">${RP ? `✓ ${esc(RP.fileName)} · ${fmt(RP.n)} طلب مسلَّم في الشهر${RP.swapped ? ` · ${fmt(RP.swapped)} طلب حُوِّل` : ''}` : 'لم يُرفع: الطلبات من الإدخال اليدوي أو طلبات الرياض في سلة'}</span>
+    </div>
+    <div class="controls" style="margin-bottom:10px;flex-wrap:wrap;gap:6px;align-items:center">
+      <span class="note">سواق في إجازة: طلبات حساب</span>
+      <input type="text" id="swFrom" value="${esc(SW.from || '')}" placeholder="اسم السواق" style="width:110px" aria-label="حساب السواق في إجازة">
+      <span class="note">تُحسب لـ</span>
+      <input type="text" id="swTo" value="${esc(SW.to || '')}" placeholder="السواق البديل" style="width:110px" aria-label="السواق البديل">
+      <span class="note">من يوم</span><input type="number" id="swD1" min="1" max="31" value="${SW.d1 ?? ''}" style="width:60px" aria-label="من يوم">
+      <span class="note">إلى يوم</span><input type="number" id="swD2" min="1" max="31" value="${SW.d2 ?? ''}" style="width:60px" aria-label="إلى يوم">
+      <span class="note">(يُطبَّق عند رفع التقرير)</span>
+    </div>
+    <table><tbody>
     <tr><td>المحروقات الفعلية للشهر</td><td colspan="${DS.length}">${inp('data-mi="fuel" aria-label="المحروقات الفعلية"', fuel, 140)} <span class="note">فارغ = من قائمة الدخل</span></td></tr>
     <tr class="sub"><td>فاتورة طيار</td>${DS.map(ce => `<td class="n">${ce.short}<br>${inp(`data-mi="tayar" data-c="${ce.id}" aria-label="طيار ${ce.short}"`, TY[ce.id])}</td>`).join('')}</tr>
     <tr class="sub"><td>طلبات السواقين المسلَّمة</td>${DS.map(ce => `<td class="n">${ce.short}</td>`).join('')}</tr>
@@ -2374,7 +2409,17 @@ function renderManualInputs() {
     if (Object.keys(ar).length) m.adRev = ar; else delete m.adRev;
     S.manual = m; refresh();
   };
-  el.querySelectorAll('input').forEach(i => i.onchange = read);
+  el.querySelectorAll('table input').forEach(i => i.onchange = read);
+  const saveSwap = () => {
+    const sw = { from: $('#swFrom').value.trim(), to: $('#swTo').value.trim(), d1: +$('#swD1').value || null, d2: +$('#swD2').value || null };
+    const m = { ...(S.manual || {}) }; if (sw.from && sw.to) m.driverSwap = sw; else delete m.driverSwap; S.manual = m;
+  };
+  ['#swFrom', '#swTo', '#swD1', '#swD2'].forEach(id => { $(id).onchange = saveSwap; });
+  $('#file-drivers').onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return; saveSwap();
+    try { S.manual = { ...(S.manual || {}), ...readDriversReport(await readFile(f), $('#month').value, manualOf().driverSwap, f.name) }; refresh(); }
+    catch (err) { $('#drvStatus').textContent = 'تعذر قراءة التقرير: ' + err.message; }
+  };
   $('#miAddDriver').onclick = () => { S.manual = { ...(S.manual || {}), driverNames: [...names.filter(Boolean), 'سواق جديد'] }; renderManualInputs(); };
 }
 function renderInputs() {

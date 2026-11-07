@@ -252,3 +252,8 @@ the wholesale project keeps the brands sheet whole, since the stores are its cus
 July 2026's exhibit service revenue is replaced from the sales report (`ARCHIVE_SVC_FIX`): the old results file carried June's figure.
 `proj.mjs` (numbers per month and center) and `cards.mjs` (every report table as shown on the page) read the published
 dashboard; `build_project.py` turns both into the project workbook, so every table of the report is also a sheet.
+
+### Drivers report (Tayar)
+In «مدخلات الشهر» upload Tayar's combined drivers report: delivered orders of the selected month are counted per store
+(column «المتجر») and driver (`readDriversReport`). A driver on leave whose account a colleague used is set in the
+swap fields (account, colleague, from day, to day) before uploading; those days count for the colleague.
