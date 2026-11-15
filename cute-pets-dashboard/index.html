@@ -663,8 +663,8 @@ function loadStore() {
   // one-time reset: October 2026 starts empty (entries there came from the old month-picker bug / tests)
   // Salla Pro is a yearly 2,600 per store: a saved fixed list still carrying the old 249 a month moves to 216.67
   for (const f of store.settings.fixed5 || []) if (f.name === 'اشتراك سلة') for (const k of Object.keys(f.by || {})) if (f.by[k] === 249) f.by[k] = 216.67;
-  // a further car insured October 2026 at 3,675.81 a year (102.11 a month per store) on top of 99.44: a saved list moves to 201.55
-  for (const f of store.settings.fixed5 || []) if (f.name === 'تأمين سيارات') for (const k of Object.keys(f.by || {})) if (f.by[k] === 99.44 || f.by[k] === 102.11) f.by[k] = 201.55;
+  // car insurance from October 2026: the three cars' yearly policies (8,637.99) / 12 / 3 stores: a saved list moves to 239.94
+  for (const f of store.settings.fixed5 || []) if (f.name === 'تأمين سيارات') for (const k of Object.keys(f.by || {})) if ([99.44, 102.11, 201.55].includes(f.by[k])) f.by[k] = 239.94;
   if (!store.purgedOct26) { delete store.months['2026-10']; delete store.history['2026-10']; store.purgedOct26 = true; persist(); }
 }
 function persist() {
@@ -918,7 +918,7 @@ const FIXED_DEFAULT = [
   ['أتعاب المحاسب القانوني', { exhibit: 361.11, cpstore: 361.11, hamtaro: 361.11 }, 'محاسب'],
   ['اشتراك سلة', { cpstore: 216.67, hamtaro: 216.67, wagy: 216.67 }, 'اشتراك سل'],   // Salla Pro, 2,600 a year per store
   ['إهلاك سيارات', { cpstore: 404.36, hamtaro: 404.36, wagy: 404.36 }, 'اهلاك'],
-  ['تأمين سيارات', { cpstore: 201.55, hamtaro: 201.55, wagy: 201.55 }, 'تامين سيار'],   // 99.44 (existing policies) + 102.11 (a further car, yearly 3,675.81 from Oct 2026 / 12 / 3 stores)
+  ['تأمين سيارات', { cpstore: 239.94, hamtaro: 239.94, wagy: 239.94 }, 'تامين سيار'],   // three cars, yearly policies 2,496.75 (18/1/2026) + 2,465.43 (27/3/2026) + 3,675.81 (5/10/2026) = 8,637.99 / 12 / 3 stores
   ['اشتراك بيزنس شات', { hamtaro: 1180.38 }, 'بيزنس شات'],
   ['اشتراك بريبوت', { cpstore: 752, wagy: 752 }, 'بريبوت|بيربوت'],
   // Edara yearly subscription 8,714.82 (Sep 2026) = 726.24 a month, equally on the five centers
