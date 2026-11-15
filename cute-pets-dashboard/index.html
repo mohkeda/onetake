@@ -1075,6 +1075,8 @@ function compute() {
     // fixed monthly expenses come from the fixed list, not from Edara
     const fx = (cat === 'admin' || cat === 'expense') && fixedMatch(r.account, r.center);
     if (fx) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: fx.name }); continue; }
+    // AI tool subscriptions (Claude) booked under advertising on a «chatGPT» sub-center: a software expense, not ad spend
+    if (cat === 'expense' && ADS_EXP.test(norm(r.account)) && AI_SUBS_SRC.test(norm(r.src || ''))) { x.lines.push({ account: 'اشتراكات برامج (كلود)', cat, amount: a, src: r.src }); x.expenses += a; continue; }
     const rcs = cat === 'expense' && ADS_EXP.test(norm(r.account)) ? (AD_RECLASS[curMonthKey()] || []).filter(q => q.center === mainDirect(r) && q.from.test(norm(r.src || '')) && !rcDone.has(q)) : [];
     if (rcs.length) {   // other spend booked inside a platform's line: split it out (total unchanged)
       rcs.forEach(q => rcDone.add(q));
@@ -2092,6 +2094,7 @@ const SALLA_INVOICE = {};   // Sep 2026's invoice is booked in the revised state
 // store delivery (shipping companies) for a month whose invoices are not booked yet: cost = outside-Riyadh shipping revenue × the
 // store's own Jul–Aug 2026 ratio of delivery cost to shipping revenue
 // ad spend booked in Edara under one platform's sub-center that belongs to another (amount in SAR moves, total unchanged)
+const AI_SUBS_SRC = /chatgpt|chat gpt|claude|كلود/;
 const AD_RECLASS = { '2026-10': [{ center: 'hamtaro', from: /ميتا|meta/, src: 'واتساب هامتارو', amount: 1336.28, note: 'واتساب هامتارو $356.34 × 3.75، مدفوعة 2/11/2026' },
   // the rest above Meta's actual October payments (916.23 + 3,500 = 4,416.23) is the Darb card platform's commission
   { center: 'hamtaro', from: /ميتا|meta/, src: 'عمولة منصة درب', amount: 183.49, note: '5,936 − ميتا 4,416.23 − واتساب 1,336.28' }] };
