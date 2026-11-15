@@ -1944,7 +1944,9 @@ function renderGoals() {
 const CAT_COLORS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
 const catPick = {};   // per section: the month shown in the share pie (this session only)
 function renderCatYear(pre, ids) {
-  const mo = $('#month').value, yr = mo.slice(0, 4), HC = histSrc();
+  const mo = $('#month').value, yr = mo.slice(0, 4);
+  // the month on screen shows as soon as its sales report is in, before «حفظ نتائج الشهر»
+  const HC = !LOCK && R?.hasSales ? { ...histSrc(), [mo]: summary(R) } : histSrc();
   const catsOf = k => { const o = {}; for (const id of ids) for (const [c, v] of Object.entries(HC[k]?.[id]?.cats || {})) o[c] = (o[c] || 0) + v; return o; };
   const months = Object.keys(HC).filter(k => k.startsWith(yr) && k <= mo && Object.values(catsOf(k)).some(v => v > 0)).sort();
   const els = ['CatYear', 'CatShare', 'CatTable', 'CatMonths'].map(n => $('#' + pre + n));
