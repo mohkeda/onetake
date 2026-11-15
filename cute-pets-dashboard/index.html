@@ -199,6 +199,7 @@ tr.indent2 td:first-child { padding-inline-start: 44px; }
         <div class="field"><label for="month">الشهر</label><input type="month" id="month"></div>
         <button class="btn primary" id="saveMonth">حفظ نتائج الشهر</button>
         <button class="btn" id="loadDemo">تحميل بيانات تجريبية</button>
+        <button class="btn" id="exportAll" hidden>تصدير نسخة كاملة</button>
       </div>
     </div>
     <nav class="tabs" role="tablist" id="tabs">
@@ -2842,6 +2843,15 @@ async function pushCenterReports(m) {
   } catch (e) { console.warn('center reports not stored', e); return false; }
 }
 $('#loadDemo').onclick = loadDemo;
+// full backup (closed months, saved results, every month's inputs) as one JSON file, to move the dashboard to another host
+let cpDl = null;
+if (!LOCK && window.claude?.use) window.claude.use('downloads').then(d => { cpDl = d; if (d) $('#exportAll').hidden = false; }, () => {});
+$('#exportAll').onclick = async () => {
+  if (!cpDl) return;
+  const data = JSON.stringify({ v: 1, at: new Date().toISOString(), seed: SEED_MONTHS, store });
+  try { await cpDl.save({ filename: `cutepets-backup-${new Date().toISOString().slice(0, 10)}.json`, data }); toast('حُفظت النسخة الكاملة'); }
+  catch (e) { toast('لم تُحفظ النسخة'); }
+};
 $('#clearMonth').onclick = () => { delete store.months[$('#month').value]; S = blankMonth(); raw = {}; persist(); refresh(); toast('مُسحت مدخلات الشهر'); };
 
 const bindSetting = (id, key, evt = 'change') => { const el = $(id); el.value = store.settings[key] ?? ''; el.addEventListener(evt, () => { store.settings[key] = el.value; persist(); refresh(); }); };
