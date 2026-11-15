@@ -944,6 +944,7 @@ function fixedMatch(account, center) {
 
 /* ---------- commissions (paid the month after; booked here in the month earned) ---------- */
 const STORE_MANAGERS = { hamtaro: 'محمد عاطف' };
+const FISH_RESPONSIBLE = 'جاويد';   // the exhibit's fish section commission is paid to him
 // advertising shared between centers: [from, to, share moved]
 const AD_SHARES = [['cpstore', 'exhibit', 0.25]];
 // months closed after review: read-only in the inputs tab, always from the published data
@@ -1692,7 +1693,7 @@ function renderPayout() {
   for (const [cid, by] of Object.entries(DR)) for (const [name, n] of Object.entries(by)) { const d = drivers[name] = drivers[name] || { n: 0, by: {} }; d.n += n; d.by[cid] = n; }
   for (const [name, d] of Object.entries(drivers)) rows.push([name, 'عمولة التوصيل', `${fmt(d.n)} طلب × ${per}`, d.n * per]);
   for (const ce of CENTERS.filter(ce => ce.delivery)) if (r.c[ce.id].mgrComm) rows.push([STORE_MANAGERS[ce.id] || `مدير ${ce.name}`, 'عمولة مدير المتجر', `${COMMISSIONS.managerPct}% × ${money(r.c[ce.id].netBeforeMgr)}`, r.c[ce.id].mgrComm]);
-  for (const l of r.c.exhibit.lines.filter(l => /عموله منتجات الاستيراد|عموله قسم الاسماك/.test(norm(l.account)))) rows.push(['المحل', itemLabel(l.account), '', l.amount]);
+  for (const l of r.c.exhibit.lines.filter(l => /عموله منتجات الاستيراد|عموله قسم الاسماك/.test(norm(l.account)))) rows.push([/اسماك/.test(norm(l.account)) ? FISH_RESPONSIBLE : 'المحل', itemLabel(l.account), '', l.amount]);
   $('#payoutCard').hidden = !rows.length;
   $('#payoutTable').innerHTML = `<table><thead><tr><th>المستحق</th><th>العمولة</th><th>الأساس</th><th class="n">المبلغ</th></tr></thead><tbody>${rows.map(([a, b, c, v]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td class="num">${esc(c)}</td><td class="n num">${fmt(v, 2)}</td></tr>`).join('')}<tr class="sum"><td>الإجمالي</td><td></td><td></td><td class="n num">${fmt(rows.reduce((a, x) => a + x[3], 0), 2)}</td></tr></tbody></table>`;
 }
