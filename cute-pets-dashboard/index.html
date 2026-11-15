@@ -498,7 +498,7 @@ const WS_ALIASES = { 'كانيفا جاف 300 جم': ['كانيفا 370 جم', '
 const WS_PRICES_FROM = '2026-09';
 // wholesale brand promotions: free pieces given with each carton sold in the stores. The gifts go out of the store's sachet
 // sales at no price; their wholesale value is taken off what the store pays wholesale, so the wholesale center carries the offer.
-const WS_PROMOS = [];   // set per offer once its products are known, e.g. { brand: 'ronron', from: '2026-10', to: null, pack: 12, free: 2, label: '…' }
+const WS_PROMOS = [{ brand: 'ronron', from: '2026-11', to: null, only: /عرض/, pack: 12, free: 2, label: 'عرض رون رون: ظرفان هدية مع الكرتون' }];   // only: the offer's own products (named «عرض …»)
 const WS_OLD = {
   'كانيفا رطب 70 جم': { piece: 3.50 }, 'كانيفا رطب كرتون 12×70 جم': { carton: 42.00 },
   'كانيفا جاف 300 جم': { piece: 13.00 }, 'كانيفا جاف 1 كجم': { piece: 33.50 }, 'كانيفا جاف 2 كجم': { piece: 65.00 }, 'كانيفا جاف 8 كجم': { piece: 146.95 },
@@ -1251,7 +1251,7 @@ function compute() {
       if (imp == null) { ws.missingImport.add(center); imp = whv ?? 0; }
       let wh = whv ?? imp;   // no price in the list: no wholesale margin on that row
       // a brand's promotion (free pieces with each carton) is the wholesale center's cost: the store is not charged for the gifts
-      const promo = !isWs && unit != null && r.qty > 0 && /كرتون/.test(norm(r.name)) && WS_PROMOS.find(q => q.brand === bid && curMo >= q.from && (!q.to || curMo <= q.to));
+      const promo = !isWs && unit != null && r.qty > 0 && /كرتون/.test(norm(r.name)) && WS_PROMOS.find(q => q.brand === bid && curMo >= q.from && (!q.to || curMo <= q.to) && (!q.only || q.only.test(norm(r.name))));
       if (promo) { const free = unit / promo.pack * promo.free * r.qty; wh -= free; ws.promo[center] = (ws.promo[center] || 0) + free; ws.promoQty[center] = (ws.promoQty[center] || 0) + promo.free * r.qty; }
       ws.matrix[center] = ws.matrix[center] || {};
       const M = ws.matrix[center][bid] = ws.matrix[center][bid] || { qty: 0, sales: 0, imp: 0, wh: 0 };
