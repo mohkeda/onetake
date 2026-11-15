@@ -2380,18 +2380,27 @@ function readDriversReport(aoa, month, swap, fileName) {
   const H = aoa[hi].map(norm), col = (...ns) => H.findIndex(h => ns.some(n => h === norm(n)));
   const cD = col('اسم السائق'), cS = col('المتجر'), cSt = col('حالة الطلب'), cT = col('تاريخ تسليم الطلب'), cC = col('تاريخ إنشاء الطلب');
   const ymd = v => v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').slice(0, 10);
-  const drivers = {}; let n = 0, swapped = 0;
+  const rows = [];   // [center, driver, day] of each delivered order: kept so a leave swap entered later still applies
   for (const r of aoa.slice(hi + 1)) {
     if (cSt >= 0 && norm(r[cSt]) !== norm('تم التوصيل')) continue;
     const d = ymd(r[cT] || r[cC]); if (d.slice(0, 7) !== month) continue;
     const cid = matchCenter(r[cS]); if (!cid || !CMAP[cid]?.delivery) continue;
-    let name = String(r[cD] || '').trim(); if (!name) continue;
-    const day = +d.slice(8, 10);
-    if (swap && swap.from && swap.to && norm(name) === norm(swap.from) && (!swap.d1 || day >= swap.d1) && (!swap.d2 || day <= swap.d2)) { name = swap.to; swapped++; }
-    (drivers[cid] = drivers[cid] || {})[name] = (drivers[cid][name] || 0) + 1; n++;
+    const name = String(r[cD] || '').trim(); if (!name) continue;
+    rows.push([cid, name, +d.slice(8, 10)]);
   }
-  if (!n) throw new Error('لا توجد طلبات مسلَّمة في هذا الشهر');
-  return { drivers, driverNames: [...new Set(Object.values(drivers).flatMap(o => Object.keys(o)))], driverReport: { fileName, n, swapped } };
+  if (!rows.length) throw new Error('لا توجد طلبات مسلَّمة في هذا الشهر');
+  return driversFromRows(rows, swap, fileName);
+}
+// a driver on leave: his account's deliveries between two days count for the driver who covered him
+function driversFromRows(rows, swap, fileName) {
+  const drivers = {}; let swapped = 0;
+  const from = norm(swap?.from || ''), on = !!(from && swap?.to);
+  for (const [cid, n0, day] of rows) {
+    let name = n0;
+    if (on && (norm(name) === from || norm(name).includes(from)) && (!swap.d1 || day >= swap.d1) && (!swap.d2 || day <= swap.d2)) { name = swap.to; swapped++; }
+    (drivers[cid] = drivers[cid] || {})[name] = (drivers[cid][name] || 0) + 1;
+  }
+  return { drivers, driverRows: rows, driverNames: [...new Set(Object.values(drivers).flatMap(o => Object.keys(o)))], driverReport: { fileName, n: rows.length, swapped } };
 }
 function renderManualInputs() {
   const el = $('#manualInputs'); if (!el) return;
@@ -2412,7 +2421,7 @@ function renderManualInputs() {
       <input type="text" id="swTo" value="${esc(SW.to || '')}" placeholder="السواق البديل" style="width:110px" aria-label="السواق البديل">
       <span class="note">من يوم</span><input type="number" id="swD1" min="1" max="31" value="${SW.d1 ?? ''}" style="width:60px" aria-label="من يوم">
       <span class="note">إلى يوم</span><input type="number" id="swD2" min="1" max="31" value="${SW.d2 ?? ''}" style="width:60px" aria-label="إلى يوم">
-      <span class="note">(يُطبَّق عند رفع التقرير)</span>
+      <span class="note">(يُطبَّق على التقرير المرفوع فوراً)</span>
     </div>
     <table><tbody>
     <tr><td>المحروقات الفعلية للشهر</td><td colspan="${DS.length}">${inp('data-mi="fuel" aria-label="المحروقات الفعلية"', fuel, 140)} <span class="note">فارغ = من قائمة الدخل</span></td></tr>
@@ -2438,7 +2447,10 @@ function renderManualInputs() {
   el.querySelectorAll('table input').forEach(i => i.onchange = read);
   const saveSwap = () => {
     const sw = { from: $('#swFrom').value.trim(), to: $('#swTo').value.trim(), d1: +$('#swD1').value || null, d2: +$('#swD2').value || null };
-    const m = { ...(S.manual || {}) }; if (sw.from && sw.to) m.driverSwap = sw; else delete m.driverSwap; S.manual = m;
+    const m = { ...(S.manual || {}) }; if (sw.from && sw.to) m.driverSwap = sw; else delete m.driverSwap;
+    // the report already uploaded is counted again with the swap (no need to upload it twice)
+    if (m.driverRows?.length) { Object.assign(m, driversFromRows(m.driverRows, m.driverSwap, m.driverReport?.fileName)); S.manual = m; refresh(); return; }
+    S.manual = m;
   };
   ['#swFrom', '#swTo', '#swD1', '#swD2'].forEach(id => { $(id).onchange = saveSwap; });
   $('#file-drivers').onchange = async (e) => {
