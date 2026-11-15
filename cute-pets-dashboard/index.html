@@ -496,6 +496,9 @@ const WS_ALIASES = { 'كانيفا جاف 300 جم': ['كانيفا 370 جم', '
 // The list above applies from September 2026. Months before it use the old prices below; a line not
 // listed here kept the same price.
 const WS_PRICES_FROM = '2026-09';
+// wholesale brand promotions: free pieces given with each carton sold in the stores. The gifts go out of the store's sachet
+// sales at no price; their wholesale value is taken off what the store pays wholesale, so the wholesale center carries the offer.
+const WS_PROMOS = [{ brand: 'ronron', from: '2026-10', to: null, pack: 12, free: 2, label: 'رون رون: ظرفان هدية مع كل كرتون' }];
 const WS_OLD = {
   'كانيفا رطب 70 جم': { piece: 3.50 }, 'كانيفا رطب كرتون 12×70 جم': { carton: 42.00 },
   'كانيفا جاف 300 جم': { piece: 13.00 }, 'كانيفا جاف 1 كجم': { piece: 33.50 }, 'كانيفا جاف 2 كجم': { piece: 65.00 }, 'كانيفا جاف 8 كجم': { piece: 146.95 },
@@ -1205,7 +1208,7 @@ function compute() {
     if (r.code) { costByCode.set(norm(r.code), r.cost); if (r.brand) brandByCode.set(norm(r.code), r.brand); }
     if (r.name) { costByName.set(norm(r.name), r.cost); if (r.brand && !r.code) brandByCode.set('n:' + norm(r.name), r.brand); }
   }
-  const ws = { byBrand: {}, bySection: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0 };
+  const ws = { byBrand: {}, bySection: {}, matrix: {}, unmatched: {}, missingImport: new Set(), rev: 0, imp: 0, qty: 0, promo: {}, promoQty: {} };
   // products sold in the month before the new prices (from that month's sales report, or kept with the seed)
   const curMo = $('#month')?.value || '';
   if (curMo === WS_PRICES_FROM) {
@@ -1246,7 +1249,10 @@ function compute() {
       if (unit == null && !isWs) { const k = `${r.code}|${r.name}`; ws.unmatched[k] = ws.unmatched[k] || { code: r.code, name: r.name, brand: bid, qty: 0, sales: 0 }; ws.unmatched[k].qty += r.qty; ws.unmatched[k].sales += r.sales; }
       let imp = r.bookCost;
       if (imp == null) { ws.missingImport.add(center); imp = whv ?? 0; }
-      const wh = whv ?? imp;   // no price in the list: no wholesale margin on that row
+      let wh = whv ?? imp;   // no price in the list: no wholesale margin on that row
+      // a brand's promotion (free pieces with each carton) is the wholesale center's cost: the store is not charged for the gifts
+      const promo = !isWs && unit != null && r.qty > 0 && /كرتون/.test(norm(r.name)) && WS_PROMOS.find(q => q.brand === bid && curMo >= q.from && (!q.to || curMo <= q.to));
+      if (promo) { const free = unit / promo.pack * promo.free * r.qty; wh -= free; ws.promo[center] = (ws.promo[center] || 0) + free; ws.promoQty[center] = (ws.promoQty[center] || 0) + promo.free * r.qty; }
       ws.matrix[center] = ws.matrix[center] || {};
       const M = ws.matrix[center][bid] = ws.matrix[center][bid] || { qty: 0, sales: 0, imp: 0, wh: 0 };
       M.qty += r.qty; M.sales += r.sales; M.imp += imp; M.wh += wh;
@@ -2316,10 +2322,13 @@ function renderWholesale() {
     return `<tr${Q.qty ? '' : ' style="color:var(--muted)"'}><td>${esc(sec.name)}</td><td class="n num">${wsPrice(sec) == null ? '—' : fmt(wsPrice(sec), 2) + (sec.isCarton ? ' / كرتون' : '')}</td><td class="n">${fmt(Q.qty)}</td><td class="n">${money(Q.imp)}</td><td class="n">${money(Q.wh)}</td><td class="n">${Q.qty ? signed(Q.wh - Q.imp) : '—'}</td></tr>`;
   }).join('')}<tr class="sum"><td>الإجمالي</td><td></td><td class="n">${fmt(tq.qty)}</td><td class="n">${money(tq.imp)}</td><td class="n">${money(tq.wh)}</td><td class="n">${signed(tq.wh - tq.imp)}</td></tr></tbody></table>`;
   const OS = ws.oldStock, sn = $('#wsStockNote');
-  sn.hidden = !OS;
-  if (OS) sn.innerHTML = OS.keys
+  const PR = Object.entries(ws.promo || {}).filter(([, v]) => v > 0), prTot = PR.reduce((t, [, v]) => t + v, 0);
+  const prNote = PR.length ? `<div>عروض البراندات على الجملة (${esc(WS_PROMOS.map(q => q.label).join('، '))}): <span class="num">${fmt(PR.reduce((t, [k]) => t + (ws.promoQty[k] || 0), 0))}</span> هدية بقيمة <span class="num">${money(prTot)}</span> بسعر الجملة، خُصمت مما تدفعه المتاجر · ${PR.map(([k, v]) => `${esc(CMAP[k]?.name || k)} <span class="num">${money(v)}</span>`).join('، ')}</div>` : '';
+  sn.hidden = !OS && !prNote;
+  if (!OS) sn.innerHTML = prNote;
+  if (OS) sn.innerHTML = prNote + (OS.keys
     ? `شهر تغيير الأسعار: المنتجات المتوفرة من المخزون السابق (بيعت في ${esc(monthLabel(OS.prevMo))}) بالتكلفة القديمة · <span class="num">${fmt(OS.qty)}</span> حبة/كرتون، بفرق <span class="num">${money(OS.saved)}</span> عن الأسعار الجديدة · الجديدة أو غير المتوفرة بالتكلفة الجديدة`
-    : `شهر تغيير الأسعار: بانتظار مبيعات ${esc(monthLabel(OS.prevMo))} لمعرفة المنتجات المتوفرة من المخزون السابق (تُحسب بالتكلفة القديمة). حالياً كل المنتجات بالتكلفة الجديدة`;
+    : `شهر تغيير الأسعار: بانتظار مبيعات ${esc(monthLabel(OS.prevMo))} لمعرفة المنتجات المتوفرة من المخزون السابق (تُحسب بالتكلفة القديمة). حالياً كل المنتجات بالتكلفة الجديدة`);
   const un = Object.values(ws.unmatched);
   $('#wsUnmatchedCard').hidden = !un.length;
   if (un.length) $('#wsUnmatched').innerHTML = `<table><thead><tr><th>الصنف</th><th>البراند</th><th class="n">الكمية</th><th class="n">المبيعات</th><th class="n">تكلفة الاستيراد</th><th class="n">تكلفة الجملة (تقديري)</th></tr></thead><tbody>${un.map(u => `<tr><td>${esc(u.name)}</td><td>${BRANDS.find(b => b.id === u.brand).name}</td><td class="n">${fmt(u.qty)}</td><td class="n">${money(u.sales)}</td><td class="n">${money(u.imp || 0)}</td><td class="n">${money(u.wh || 0)} <span class="badge">×${fmt(u.ratio || 1, 2)}</span></td></tr>`).join('')}</tbody></table>`;
