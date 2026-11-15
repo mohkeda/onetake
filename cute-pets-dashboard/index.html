@@ -904,6 +904,8 @@ function excludeConsumption(rows) {
 // "هدايا الموقع الالكتروني" is Cute Pets' website; an account naming an online store goes to that store.
 // (The exhibit is left out on purpose: its consumption account is still under review.)
 const MAIN_DIRECT = [[/الموقع الالكتروني|الموقع الإلكتروني/, 'cpstore'], [/استهلاك داخل المعرض|استهلاك المعرض/, 'exhibit']];
+// main-center lines split equally on the four sales outlets
+const MAIN_SPLIT = [[/منتهيه الصلاحيه|منتهي الصلاحيه/, ['exhibit', 'cpstore', 'hamtaro', 'wagy']]];
 function mainDirect(r) {
   if (r.center !== 'main') return r.center;
   const t = norm(r.account);
@@ -935,8 +937,8 @@ const fixedList = () => { const L = store.settings.fixed5; return L ? [...L, ...
 const LOAN_PROFIT = { '2026-09': 7043.14, '2026-10': 6413.73, '2026-11': 6201.35, '2026-12': 5585.43, '2027-01': 5331.53, '2027-02': 4887.20,
   '2027-03': 4006.17, '2027-04': 3968.82, '2027-05': 3388.66, '2027-06': 3024.68, '2027-07': 2459.64, '2027-08': 2249.10, '2027-09': 1549.68,
   '2027-10': 1008.27, '2027-11': 525.03 };
-// from October 2026 the wholesale center carries a quarter as well
-const loanCenters = mo => (mo >= '2026-10' ? ['exhibit', 'cpstore', 'hamtaro', 'wholesale'] : ['exhibit', 'cpstore', 'hamtaro']);
+// from October 2026 the five outlets (exhibit, Cute, Hamtaro, Waggy, wholesale) carry a fifth each
+const loanCenters = mo => (mo >= '2026-10' ? ['exhibit', 'cpstore', 'hamtaro', 'wagy', 'wholesale'] : ['exhibit', 'cpstore', 'hamtaro']);
 // Workbook months whose loan line was copied from the month before: corrected to the schedule (January and
 // February also carried a second loan and stay as booked; March, April and June already match).
 const LOAN_FIX = { '2026-05': 8367.85, '2026-07': 7604.60, '2026-08': 7451.89 };
@@ -1052,7 +1054,9 @@ function compute() {
   const rcDone = new Set();
   const revSum = isRows.filter(r => ['sales', 'other', 'delivery'].includes(S.cls[r.account] || classify(r.account, r.group))).reduce((a, r) => a + r.amount, 0);
   const flip = revSum < 0 ? -1 : 1;
-  for (const r of isRows) {
+  // lines booked on the main center that belong equally to the sales outlets (MAIN_SPLIT)
+  const isRowsX = isRows.flatMap(r => { const sp = r.center === 'main' && MAIN_SPLIT.find(([re]) => re.test(norm(r.account))); return sp ? sp[1].map(cid => ({ ...r, center: cid, amount: r.amount / sp[1].length })) : [r]; });
+  for (const r of isRowsX) {
     const cat = S.cls[r.account] || classify(r.account, r.group);
     const a = r.amount * flip, x = c[mainDirect(r)];
     if (!x || cat === 'ignore' || cat === 'wscost') continue;
