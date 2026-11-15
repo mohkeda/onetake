@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Build and deploy the Firebase version of the dashboard from Google Cloud Shell.
-# Usage (inside a clone of this repo):  bash cute-pets-dashboard/deploy_cloudshell.sh EDITOR_EMAIL [PROJECT_ID]
+# Usage (inside a clone of this repo):  bash cute-pets-dashboard/deploy_cloudshell.sh EDITOR_EMAIL [VIEWER_EMAILS_COMMA_SEPARATED] [PROJECT_ID]
 # The web config is fetched from Firebase at run time, so nothing project-specific is stored in the repo.
 set -euo pipefail
 EMAIL="${1:?editor e-mail required}"
-PROJECT="${2:-cutepets-monthly-report}"
+VIEWERS="${2:-}"
+PROJECT="${3:-cutepets-monthly-report}"
 cd "$(dirname "$0")"
 
 if ! firebase projects:list >/dev/null 2>&1; then
@@ -31,7 +32,11 @@ print("config:", keep["projectId"], keep["appId"])
 PY
 
 sed -i "s/'OWNER@gmail.com'/'$EMAIL'/" firebase/firestore.rules
-grep -n "function editors" firebase/firestore.rules
+if [ -n "$VIEWERS" ]; then
+  LIST=$(echo "$VIEWERS" | tr 'A-Z' 'a-z' | sed "s/[[:space:]]//g; s/,/','/g")
+  sed -i "s/editors().concat(\[\])/editors().concat(['$LIST'])/" firebase/firestore.rules
+fi
+grep -n "function editors\|function viewers" firebase/firestore.rules
 python3 build_firebase.py index.html firebase firebase-config.json
 
 cd firebase
