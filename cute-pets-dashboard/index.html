@@ -1043,6 +1043,7 @@ function compute() {
   const empCosts = hasPayroll && S.payroll.emp && Object.keys(S.payroll.emp).length ? S.payroll.emp : null;
   let salariesReplaced = 0, phoneTotal = 0;   // phoneTotal: Edara's phone lines, replaced by PHONE_SPLIT
   const fixedReplaced = [];
+  const rcDone = new Set();
   const revSum = isRows.filter(r => ['sales', 'other', 'delivery'].includes(S.cls[r.account] || classify(r.account, r.group))).reduce((a, r) => a + r.amount, 0);
   const flip = revSum < 0 ? -1 : 1;
   for (const r of isRows) {
@@ -1064,7 +1065,12 @@ function compute() {
     // fixed monthly expenses come from the fixed list, not from Edara
     const fx = (cat === 'admin' || cat === 'expense') && fixedMatch(r.account, r.center);
     if (fx) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: fx.name }); continue; }
-    x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a, src: r.src });
+    const rc = cat === 'expense' && ADS_EXP.test(norm(r.account)) && (AD_RECLASS[curMonthKey()] || []).find(q => q.center === mainDirect(r) && q.from.test(norm(r.src || '')) && !rcDone.has(q));
+    if (rc) {   // a platform's spend booked inside another platform's line: split it out (total unchanged)
+      rcDone.add(rc);
+      x.lines.push({ account: r.account, cat, amount: a - rc.amount, src: r.src });
+      x.lines.push({ account: r.account, cat, amount: rc.amount, src: rc.src, note: rc.note });
+    } else x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a, src: r.src });
     if (cat === 'sales') x.salesRev += a;
     else if (cat === 'contra') x.salesRev -= Math.abs(a);
     else if (cat === 'delivery') { if (/خارج|شحن/.test(norm(r.account)) && !/داخل/.test(norm(r.account))) x.delOutIS += a; else x.delInIS += a; }
@@ -2072,6 +2078,8 @@ const SALLA_ACCRUAL = {};   // e.g. { '2026-09': { cpstore: 0.01345, hamtaro: 0.
 const SALLA_INVOICE = {};   // Sep 2026's invoice is booked in the revised statement (توصيل المتجر, رسوم تحصيل منصه سله, دعاية)
 // store delivery (shipping companies) for a month whose invoices are not booked yet: cost = outside-Riyadh shipping revenue × the
 // store's own Jul–Aug 2026 ratio of delivery cost to shipping revenue
+// ad spend booked in Edara under one platform's sub-center that belongs to another (amount in SAR moves, total unchanged)
+const AD_RECLASS = { '2026-10': [{ center: 'hamtaro', from: /ميتا|meta/, src: 'واتساب هامتارو', amount: 1336.28, note: 'واتساب هامتارو $356.34 × 3.75، مدفوعة 2/11/2026' }] };
 const DELIVERY_ACCRUAL = {};   // e.g. { '2026-09': { cpstore: 1.02, hamtaro: 0.90, wagy: 1.06 } } until Salla's invoices came
 // packaging bought near a month's end: only the days used that month are its cost, the rest moves to the next month
 // (used = days used / 30, the batch covering about a month)
