@@ -1065,11 +1065,11 @@ function compute() {
     // fixed monthly expenses come from the fixed list, not from Edara
     const fx = (cat === 'admin' || cat === 'expense') && fixedMatch(r.account, r.center);
     if (fx) { fixedReplaced.push({ account: r.account, center: r.center, amount: a, by: fx.name }); continue; }
-    const rc = cat === 'expense' && ADS_EXP.test(norm(r.account)) && (AD_RECLASS[curMonthKey()] || []).find(q => q.center === mainDirect(r) && q.from.test(norm(r.src || '')) && !rcDone.has(q));
-    if (rc) {   // a platform's spend booked inside another platform's line: split it out (total unchanged)
-      rcDone.add(rc);
-      x.lines.push({ account: r.account, cat, amount: a - rc.amount, src: r.src });
-      x.lines.push({ account: r.account, cat, amount: rc.amount, src: rc.src, note: rc.note });
+    const rcs = cat === 'expense' && ADS_EXP.test(norm(r.account)) ? (AD_RECLASS[curMonthKey()] || []).filter(q => q.center === mainDirect(r) && q.from.test(norm(r.src || '')) && !rcDone.has(q)) : [];
+    if (rcs.length) {   // other spend booked inside a platform's line: split it out (total unchanged)
+      rcs.forEach(q => rcDone.add(q));
+      x.lines.push({ account: r.account, cat, amount: a - rcs.reduce((t, q) => t + q.amount, 0), src: r.src });
+      for (const q of rcs) x.lines.push({ account: r.account, cat, amount: q.amount, src: q.src, note: q.note });
     } else x.lines.push({ account: r.account, cat, amount: cat === 'contra' ? -Math.abs(a) : a, src: r.src });
     if (cat === 'sales') x.salesRev += a;
     else if (cat === 'contra') x.salesRev -= Math.abs(a);
@@ -2079,7 +2079,9 @@ const SALLA_INVOICE = {};   // Sep 2026's invoice is booked in the revised state
 // store delivery (shipping companies) for a month whose invoices are not booked yet: cost = outside-Riyadh shipping revenue × the
 // store's own Jul–Aug 2026 ratio of delivery cost to shipping revenue
 // ad spend booked in Edara under one platform's sub-center that belongs to another (amount in SAR moves, total unchanged)
-const AD_RECLASS = { '2026-10': [{ center: 'hamtaro', from: /ميتا|meta/, src: 'واتساب هامتارو', amount: 1336.28, note: 'واتساب هامتارو $356.34 × 3.75، مدفوعة 2/11/2026' }] };
+const AD_RECLASS = { '2026-10': [{ center: 'hamtaro', from: /ميتا|meta/, src: 'واتساب هامتارو', amount: 1336.28, note: 'واتساب هامتارو $356.34 × 3.75، مدفوعة 2/11/2026' },
+  // the rest above Meta's actual October payments (916.23 + 3,500 = 4,416.23) is the Darb card platform's commission
+  { center: 'hamtaro', from: /ميتا|meta/, src: 'عمولة منصة درب', amount: 183.49, note: '5,936 − ميتا 4,416.23 − واتساب 1,336.28' }] };
 const DELIVERY_ACCRUAL = {};   // e.g. { '2026-09': { cpstore: 1.02, hamtaro: 0.90, wagy: 1.06 } } until Salla's invoices came
 // packaging bought near a month's end: only the days used that month are its cost, the rest moves to the next month
 // (used = days used / 30, the batch covering about a month)
