@@ -96,7 +96,7 @@ if not os.path.exists(out + '/firestore.rules'):
 service cloud.firestore {
   match /databases/{database}/documents {
     function editors() { return ['OWNER@gmail.com']; }
-    function viewers() { return editors() + []; }
+    function viewers() { return editors().concat([]); }
     function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
     match /dash/{doc} {
       allow read: if signedIn() && request.auth.token.email in viewers();
