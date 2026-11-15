@@ -2579,6 +2579,23 @@ function parseEmpCosts(sheets) {
     }
     if (Object.keys(out).length) return out;
   }
+  // the payroll sheet itself: one row per employee with its cost center and the company's GOSI, medical and iqama columns
+  for (const { aoa } of sheets) {
+    const h = aoa.findIndex(r => r.some(c => /^مركز التكلفه$/.test(norm(c))) && r.some(c => /تامينات/.test(norm(c)) && /الشركه/.test(norm(c))));
+    if (h < 0) continue;
+    const H = aoa[h].map(c => norm(c)), col = re => H.findIndex(c => re.test(c));
+    const cu = col(/^مركز التكلفه$/), cg = H.findIndex(c => /تامينات/.test(c) && /الشركه/.test(c)), ci = col(/اقامه|كارت العمل/), cm = col(/تامين (ال)?صحي|تامين (ال)?طبي/);
+    const out = {};
+    for (const r of aoa.slice(h + 1)) {
+      if (r.some(c => /^الاجمالي$/.test(norm(c)))) break;
+      let u = norm(r[cu]); if (!u) continue;
+      // «5 مراكز» = management, split on the five centers; «الرئيسي» = drivers and shared staff, split on the three stores
+      u = /5 مراكز|خمس/.test(u) ? 'اداره' : /رئيسي/.test(u) ? 'متاجر' : u;
+      const o = out[u] = out[u] || { gosi: 0, iqama: 0, medical: 0 };
+      o.gosi += toNum(r[cg]); if (ci >= 0) o.iqama += toNum(r[ci]); if (cm >= 0) o.medical += toNum(r[cm]);
+    }
+    if (Object.keys(out).length) return out;
+  }
   return null;
 }
 function leaveDemo() { if (S.demo) { S = blankMonth(); raw = {}; } }
