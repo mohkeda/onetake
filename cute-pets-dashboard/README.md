@@ -268,8 +268,8 @@ fills them from the item code (categories and service names taken from the Sep�
 as «ServiceItem» and is named by its code. Brands are still matched by item name. Unknown codes go to «غير مصنف».
 
 ## Monthly report format (decided 18 Nov 2026, the manager's request)
-From October 2026 on, **every monthly report is produced in the format of the old monthly Excel workbook
-(«النتائج الشهريه»), as a PDF** — not the dashboard's center-report layout. Per center, four pages:
+The published dashboard and its center reports stay as they are. **In addition**, from October 2026 on, every month
+gets an extra report in the format of the old monthly Excel workbook («النتائج الشهريه»), as a PDF. Per center, four pages:
 1. Income statement: title «النتائج الشهريه لـ<center> عن شهر M/YYYY» with the net in the corner; أولا الإيرادات (lines + total),
    ثانيا المصروفات → المصاريف الاداريه (lines) and المصاريف التشغيليه (lines, cost of goods first); columns amount,
    % of expenses, % of revenue; then net, income tax, net after tax.
