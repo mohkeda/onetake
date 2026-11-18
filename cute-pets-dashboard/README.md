@@ -266,3 +266,17 @@ outside-Riyadh shipping (delOut, ordOut): it is a shipping company's delivery, n
 The short Edara pivot (Stock.item, ItemCode, Sales.store, sales, cost) has no category or brand column. `CODE_INFO`
 fills them from the item code (categories and service names taken from the Sep–Oct 2026 reports); a service row shows
 as «ServiceItem» and is named by its code. Brands are still matched by item name. Unknown codes go to «غير مصنف».
+
+## Monthly report format (decided 18 Nov 2026, the manager's request)
+From October 2026 on, **every monthly report is produced in the format of the old monthly Excel workbook
+(«النتائج الشهريه»), as a PDF** — not the dashboard's center-report layout. Per center, four pages:
+1. Income statement: title «النتائج الشهريه لـ<center> عن شهر M/YYYY» with the net in the corner; أولا الإيرادات (lines + total),
+   ثانيا المصروفات → المصاريف الاداريه (lines) and المصاريف التشغيليه (lines, cost of goods first); columns amount,
+   % of expenses, % of revenue; then net, income tax, net after tax.
+2. Category sales by month (table) + clustered bar chart. 3. Category pie for the month. 4. Colored summary box
+   (revenue lines light green, total revenue green, admin/operating orange, total expenses red, net purple).
+A month-on-month comparison in the same format (both months side by side, differences in SAR and %, green/red,
+a profit bridge sorted by impact, and categories) goes with it when asked.
+Tools: `old_format_report.py data.json out.html` and `old_format_compare.py earlier.json later.json out.html`,
+then print to PDF (Chromium, A4). The data JSON holds the figures (TITLE, REV, ADM, OPX, TAX, MONTHS, CATS): it is
+built from the closed month's results and kept **out of this public repository**.
