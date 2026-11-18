@@ -11,7 +11,7 @@ assert html.count('/*SEED*/null/*END*/') == 1
 html = html.replace('/*SEED*/null/*END*/', 'window.__CP_SEED || null')
 i = html.index('<script>\n(() => {'); j = html.index('</script>', i)
 main = html[i + len('<script>'):j]
-LOADER = r'''<div id="cp-boot" style="font-family:system-ui;padding:40px;text-align:center;color:#555">جاري التحميل…</div>
+LOADER = r'''<div id="cp-boot" dir="rtl" style="position:fixed;inset:0;z-index:2147483000;background:#faf8f5;overflow:auto;font-family:system-ui;padding:80px 20px;text-align:center;color:#555">جاري التحميل…</div>
 <script type="text/plain" id="cp-main">''' + main + r'''</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -96,7 +96,7 @@ if not os.path.exists(out + '/firestore.rules'):
 service cloud.firestore {
   match /databases/{database}/documents {
     function editors() { return ['OWNER@gmail.com']; }
-    function viewers() { return editors() + []; }
+    function viewers() { return editors().concat([]); }
     function signedIn() { return request.auth != null && request.auth.token.email_verified == true; }
     match /dash/{doc} {
       allow read: if signedIn() && request.auth.token.email in viewers();
