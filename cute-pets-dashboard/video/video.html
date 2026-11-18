@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>نتائج سبتمبر</title>
+<link rel="stylesheet" href="fonts_local.css">
+<style>
+:root {
+  --bg: #0d1211; --surface: #161d1b; --surface-2: #1d2724; --ink: #eef2ef; --ink-2: #bfc8c3; --muted: #8a948f;
+  --line: #2a3330; --accent: #3fb59d; --good: #39c45a; --bad: #f07171;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #2f9e3f; --cost: #5b6661;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans Arabic", sans-serif; }
+.num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; display: inline-block; }
+#stage { position: absolute; inset: 0; overflow: hidden; }
+.bgglow { position: absolute; width: 1400px; height: 1400px; border-radius: 50%; filter: blur(40px); opacity: .22;
+  background: radial-gradient(circle, #1f7a66 0%, transparent 62%); }
+.brand { position: absolute; top: 70px; right: 80px; left: 80px; display: flex; justify-content: space-between; align-items: center; font-size: 30px; color: var(--ink-2); }
+.brand b { font-family: "Readex Pro", sans-serif; color: var(--ink); font-size: 34px; }
+.pill { border: 2px solid var(--accent); color: var(--accent); border-radius: 99px; padding: 6px 22px; font-size: 26px; font-weight: 600; }
+.scene { position: absolute; inset: 0; padding: 190px 80px 220px; opacity: 0; display: flex; flex-direction: column; justify-content: center; }
+h1 { font-family: "Readex Pro", sans-serif; font-weight: 700; font-size: 104px; line-height: 1.2; }
+h2 { font-family: "Readex Pro", sans-serif; font-weight: 700; font-size: 64px; line-height: 1.25; margin-bottom: 14px; }
+.sub { font-size: 34px; color: var(--muted); margin-bottom: 56px; }
+.kpi { background: var(--surface); border-radius: 28px; padding: 36px 44px; margin-bottom: 28px; border: 1px solid var(--line); }
+.kpi .k { font-size: 34px; color: var(--ink-2); }
+.kpi .v { font-size: 92px; font-weight: 700; line-height: 1.15; }
+.kpi .v small { font-size: 36px; color: var(--muted); font-weight: 400; margin-inline-start: 10px; }
+.kpi .d { font-size: 28px; color: var(--muted); margin-top: 4px; }
+.row { margin-bottom: 40px; }
+.row .lbl { display: flex; justify-content: space-between; align-items: baseline; font-size: 38px; margin-bottom: 12px; }
+.row .lbl .n { font-weight: 700; font-size: 44px; }
+.dot { display: inline-block; width: 26px; height: 26px; border-radius: 8px; margin-inline-end: 14px; vertical-align: -3px; }
+.track { position: relative; height: 54px; background: var(--surface); border-radius: 12px; }
+.bar { position: absolute; top: 0; bottom: 0; border-radius: 12px; }
+.mid { position: absolute; top: -10px; bottom: -10px; width: 3px; background: var(--muted); left: 50%; }
+.note { font-size: 28px; color: var(--muted); margin-top: 6px; }
+.legend-row { display: flex; justify-content: space-between; align-items: center; font-size: 36px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.legend-row b { font-size: 40px; }
+.foot { position: absolute; bottom: 70px; right: 80px; left: 80px; font-size: 26px; color: var(--muted); text-align: center; }
+.prog { position: absolute; bottom: 0; right: 0; height: 8px; background: var(--accent); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="bgglow" id="glow"></div>
+  <div class="brand"><b>كيوت بيتس</b><span class="pill">نتائج مبدئية</span></div>
+
+  <section class="scene" id="s1" style="display:flex;flex-direction:column;justify-content:center;padding-bottom:300px">
+    <div class="sub" style="font-size:44px;margin-bottom:24px" id="s1a">النتائج الشهرية</div>
+    <h1 id="s1b">سبتمبر<br>2026</h1>
+    <div style="height:8px;width:0;background:var(--accent);border-radius:4px;margin:56px 0 40px" id="s1c"></div>
+    <div class="sub" style="font-size:38px" id="s1d">المعرض · كيوت بيتس · هامتارو · واجي · الجملة</div>
+  </section>
+
+  <section class="scene" id="s2">
+    <h2>أرقام الشركة</h2>
+    <div class="sub">سبتمبر مقارنة بأغسطس</div>
+    <div id="kpis"></div>
+  </section>
+
+  <section class="scene" id="s3">
+    <h2>صافي الربح قبل الضريبة</h2>
+    <div class="sub">لكل مركز · الخط الأوسط = صفر</div>
+    <div id="nets"></div>
+  </section>
+
+  <section class="scene" id="s4">
+    <h2>الإيرادات</h2>
+    <div class="sub">لكل مركز · والتغير عن أغسطس</div>
+    <div id="revs"></div>
+  </section>
+
+  <section class="scene" id="s5">
+    <h2>مبيعات الأقسام</h2>
+    <div class="sub">نسبة كل قسم من مبيعات سبتمبر</div>
+    <svg id="donut" viewBox="0 0 600 600" width="560" height="560" style="display:block;margin:0 auto 40px"></svg>
+    <div id="catlist"></div>
+  </section>
+
+  <section class="scene" id="s6">
+    <h2>البراندات</h2>
+    <div class="sub">مبيعات كانيفا ورون رون وشيرمان حسب المركز</div>
+    <div id="brands"></div>
+  </section>
+
+  <section class="scene" id="s7" style="display:flex;flex-direction:column;justify-content:center;padding-bottom:300px">
+    <h1 style="font-size:84px" id="s7a">أرقام مبدئية</h1>
+    <div class="sub" style="font-size:40px;margin-top:30px;line-height:1.6" id="s7b">النتائج النهائية بعد قائمة الدخل المعدلة<br>ومراجعة المصاريف النثرية</div>
+    <div style="font-family:'Readex Pro';font-size:56px;font-weight:700;color:var(--accent);margin-top:70px" id="s7c">كيوت بيتس</div>
+  </section>
+
+  <div class="foot">لوحة نتائج كيوت بيتس · المبالغ بالريال</div>
+  <div class="prog" id="prog"></div>
+</div>
+<script>
+const D = /*DATA*/null;
+const NAMES = { exhibit: 'المعرض', cpstore: 'كيوت بيتس', hamtaro: 'هامتارو', wagy: 'واجي', wholesale: 'الجملة' };
+const COLOR = { exhibit: '--s1', cpstore: '--s2', hamtaro: '--s3', wagy: '--s4', wholesale: '--s5' };
+const CAT_COLORS = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6', '--cost'];
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const sgn = n => (n < 0 ? '−' : '') + fmt(Math.abs(n));
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const ease = t => 1 - Math.pow(1 - clamp(t), 3);
+const $ = id => document.getElementById(id);
+// scene windows [start, end] in seconds
+const SC = { s1: [0, 4], s2: [4, 10], s3: [10, 16.5], s4: [16.5, 22.5], s5: [22.5, 28.5], s6: [28.5, 34], s7: [34, 38] };
+const TOTAL = 38;
+
+// build static DOM
+const k = [
+  ['إجمالي الإيرادات', D.sep.rev, D.aug.rev],
+  ['مجمل الربح', D.sep.gross, D.aug.gross],
+  ['صافي الربح قبل الضريبة', D.sep.net, D.aug.net],
+  ['صافي الربح بعد الضريبة', D.sep.after, D.aug.after],
+];
+$('kpis').innerHTML = k.map((x, i) => `<div class="kpi" id="kp${i}"><div class="k">${x[0]}</div><div class="v"><span class="num" id="kv${i}">0</span><small>ريال</small></div><div class="d">أغسطس: <span class="num">${sgn(x[2])}</span> · التغير <span class="num" style="color:${x[1] >= x[2] ? 'var(--good)' : 'var(--bad)'}">${x[1] >= x[2] ? '+' : '−'}${Math.abs((x[1] - x[2]) / Math.abs(x[2]) * 100).toFixed(0)}%</span></div></div>`).join('');
+const nets = [...D.centers].sort((a, b) => b.net - a.net);
+const nMax = Math.max(...nets.map(c => Math.abs(c.net)));
+$('nets').innerHTML = nets.map((c, i) => `<div class="row" id="nr${i}"><div class="lbl"><span><i class="dot" style="background:var(${COLOR[c.id]})"></i>${NAMES[c.id]}</span><span class="n num" id="nv${i}" style="color:${c.net >= 0 ? 'var(--good)' : 'var(--bad)'}">0</span></div><div class="track"><div class="mid"></div><div class="bar" id="nb${i}" style="background:${c.net >= 0 ? 'var(--good)' : 'var(--bad)'}"></div></div><div class="note">أغسطس: <span class="num">${sgn(c.netAug)}</span></div></div>`).join('');
+const revs = [...D.centers].sort((a, b) => b.rev - a.rev);
+const rMax = Math.max(...revs.map(c => c.rev));
+$('revs').innerHTML = revs.map((c, i) => { const ch = (c.rev - c.revAug) / c.revAug * 100; return `<div class="row" id="rr${i}"><div class="lbl"><span><i class="dot" style="background:var(${COLOR[c.id]})"></i>${NAMES[c.id]}</span><span class="n num" id="rv${i}">0</span></div><div class="track"><div class="bar" id="rb${i}" style="right:0;background:var(${COLOR[c.id]})"></div></div><div class="note">عن أغسطس <span class="num" style="color:${ch >= 0 ? 'var(--good)' : 'var(--bad)'}">${ch >= 0 ? '▲ +' : '▼ −'}${Math.abs(ch).toFixed(1)}%</span></div></div>`; }).join('');
+$('catlist').innerHTML = D.cats.map((c, i) => `<div class="legend-row" id="cl${i}"><span><i class="dot" style="background:var(${CAT_COLORS[i]})"></i>${c[0]}</span><b class="num">${(c[1] / D.catTot * 100).toFixed(1)}%</b></div>`).join('');
+const bl = Object.entries(D.brands).sort((a, b) => b[1] - a[1]), bTot = bl.reduce((a, b) => a + b[1], 0);
+$('brands').innerHTML = `<div class="track" style="height:110px;margin-bottom:60px;overflow:hidden;display:flex;flex-direction:row" id="bstack">${bl.map(([id], i) => `<div id="bs${i}" style="height:100%;background:var(${COLOR[id]});width:0;margin-inline-start:${i ? 4 : 0}px"></div>`).join('')}</div>`
+  + bl.map(([id, v], i) => `<div class="legend-row" id="bl${i}" style="padding:22px 0"><span><i class="dot" style="background:var(${COLOR[id]})"></i>${NAMES[id]}</span><span><span class="num" style="color:var(--muted);font-size:32px;margin-left:28px">${fmt(v)}</span><b class="num">${(v / bTot * 100).toFixed(1)}%</b></span></div>`).join('')
+  + `<div class="legend-row" style="border:0;color:var(--muted)"><span>إجمالي مبيعات البراندات</span><b class="num" style="color:var(--ink)">${fmt(bTot)}</b></div>`;
+
+function sceneAlpha(id, t) {
+  const [a, b] = SC[id];
+  if (t < a || t > b) return 0;
+  return Math.min(ease((t - a) / 0.5), id === 's7' ? 1 : clamp((b - t) / 0.4));
+}
+function stagger(el, local, i, step = 0.18) { const p = ease((local - 0.3 - i * step) / 0.5); el.style.opacity = p; el.style.transform = `translateY(${(1 - p) * 40}px)`; return p; }
+
+window.render = t => {
+  for (const id of Object.keys(SC)) { const a = sceneAlpha(id, t), el = $(id); el.style.opacity = a; el.style.transform = `translateY(${(1 - a) * 30}px)`; }
+  $('glow').style.transform = `translate(${-300 + 200 * Math.sin(t / 6)}px, ${200 + 500 * (t / TOTAL)}px)`;
+  $('prog').style.width = (t / TOTAL * 100) + '%';
+  // s1
+  let l = t - SC.s1[0];
+  ['s1a', 's1b', 's1d'].forEach((id, i) => stagger($(id), l, i, 0.25));
+  $('s1c').style.width = ease((l - 0.6) / 0.9) * 360 + 'px';
+  // s2
+  l = t - SC.s2[0];
+  k.forEach((x, i) => { const p = stagger($('kp' + i), l, i, 0.35); $('kv' + i).textContent = sgn(x[1] * ease((l - 0.4 - i * 0.35) / 1.4)); });
+  // s3
+  l = t - SC.s3[0];
+  nets.forEach((c, i) => { stagger($('nr' + i), l, i, 0.3); const p = ease((l - 0.6 - i * 0.3) / 1.2), w = Math.abs(c.net) / nMax * 50 * p, b = $('nb' + i);
+    b.style.width = w + '%'; if (c.net >= 0) { b.style.left = 'auto'; b.style.right = (50 - w) + '%'; b.style.left = '50%'; b.style.right = 'auto'; } else { b.style.right = '50%'; b.style.left = 'auto'; }
+    $('nv' + i).textContent = sgn(c.net * p); });
+  // s4
+  l = t - SC.s4[0];
+  revs.forEach((c, i) => { stagger($('rr' + i), l, i, 0.25); const p = ease((l - 0.6 - i * 0.25) / 1.2); $('rb' + i).style.width = c.rev / rMax * 100 * p + '%'; $('rv' + i).textContent = fmt(c.rev * p); });
+  // s5 donut
+  l = t - SC.s5[0];
+  const sweep = ease((l - 0.4) / 1.8) * Math.PI * 2, R = 270, r = 165, cx = 300, cy = 300;
+  let a0 = -Math.PI / 2, svg = '';
+  D.cats.forEach((c, i) => {
+    const f = c[1] / D.catTot, a1full = a0 + f * Math.PI * 2, a1 = Math.min(a1full, -Math.PI / 2 + sweep);
+    if (a1 > a0 + 0.001) {
+      const P = (rad, a) => `${cx + rad * Math.cos(a)},${cy + rad * Math.sin(a)}`, big = a1 - a0 > Math.PI ? 1 : 0;
+      svg += `<path d="M${P(R, a0)} A${R},${R} 0 ${big} 1 ${P(R, a1)} L${P(r, a1)} A${r},${r} 0 ${big} 0 ${P(r, a0)} Z" fill="var(${CAT_COLORS[i]})" stroke="var(--bg)" stroke-width="4"/>`;
+    }
+    a0 = a1full;
+  });
+  const top = D.cats[0];
+  svg += `<text x="300" y="290" text-anchor="middle" fill="var(--ink)" style="font:700 72px 'IBM Plex Sans Arabic'" opacity="${ease((l - 1.4) / 0.6)}">${(top[1] / D.catTot * 100).toFixed(0)}%</text>`;
+  svg += `<text x="300" y="350" text-anchor="middle" fill="var(--muted)" style="font:400 32px 'IBM Plex Sans Arabic'" opacity="${ease((l - 1.4) / 0.6)}">${top[0]}</text>`;
+  $('donut').innerHTML = svg;
+  D.cats.forEach((c, i) => stagger($('cl' + i), l, i + 3, 0.15));
+  // s6 brands
+  l = t - SC.s6[0];
+  bl.forEach(([, v], i) => { $('bs' + i).style.width = `calc(${v / bTot * 100 * ease((l - 0.5 - i * 0.2) / 1.0)}% - 4px)`; stagger($('bl' + i), l, i + 2, 0.22); });
+  // s7
+  l = t - SC.s7[0];
+  ['s7a', 's7b', 's7c'].forEach((id, i) => stagger($(id), l, i, 0.3));
+};
+window.TOTAL = TOTAL;
+render(new URLSearchParams(location.search).get('t') ? +new URLSearchParams(location.search).get('t') : 6);
+</script>
+</body>
+</html>
